@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   /* config options here */
   webpack: (config, { isServer }) => {
     // Add handling for specific packages with issues
