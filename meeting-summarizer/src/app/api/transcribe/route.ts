@@ -94,8 +94,14 @@ export async function POST(request: Request) {
     // OpenAI ondersteunt het verwerken van bestanden via URL
     try {
       const transcription = await withRetry(async () => {
+        let fileToUpload = blobUrl;
+        if (typeof blobUrl === "string") {
+          const resp = await fetch(blobUrl);
+          const arrayBuffer = await resp.arrayBuffer();
+          fileToUpload = Object.assign(Buffer.from(arrayBuffer), { name: originalFileName });
+        }
         return await openai.audio.transcriptions.create({
-          file: blobUrl,  // Gebruik de Blob URL in plaats van een bestand
+          file: fileToUpload,
           model: modelId,
           language: 'nl',
           response_format: 'text',
