@@ -5,6 +5,10 @@ import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 
+export const config = {
+  runtime: 'nodejs'
+};
+
 // Helper function to add retry logic
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
   let lastError: any;
@@ -28,13 +32,34 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000):
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    
-    // Nieuwe parameters voor Blob URL verwerking
-    const blobUrl = body.blobUrl;
+    const contentType = request.headers.get("content-type") || "";
+    let body: any;
+    if (contentType.includes("application/json")) {
+      try {
+        body = await request.json();
+      } catch (err) {
+        body = { file: await request.clone().blob(), originalFileName: 'audio.wav' };
+      }
+    } else if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const fileField = formData.get("file");
+      if (!fileField) {
+        return NextResponse.json({ error: "Geen audio bestand aangeleverd" }, { status: 400 });
+      }
+      body = {
+        file: fileField,
+        originalFileName: fileField instanceof File ? fileField.name : "audio.mp3"
+      };
+    } else if (contentType.startsWith("audio/")) {
+      const blob = await request.blob();
+      body = { file: blob, originalFileName: 'audio.wav' };
+    } else {
+      return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
+    }
+
+    const blobUrl = body.blobUrl || body.file;
     const originalFileName = body.originalFileName || 'audio.mp3';
-    // Remove unused fileType variable
-    const fileSize = body.fileSize || 0;
+    const fileSize = body.file && body.file instanceof File ? body.file.size : (body.fileSize || 0);
     const modelId = body.model || 'whisper-1';
     
     if (!blobUrl) {
