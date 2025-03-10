@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
+import { Readable } from 'stream';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 
 export const config = {
@@ -50,12 +51,12 @@ export async function POST(request: Request) {
         file: fileField,
         originalFileName: fileField instanceof File ? fileField.name : "audio.mp3"
       };
-    } else if (contentType.startsWith("audio/")) {
-      const blob = await request.blob();
-      body = { file: blob, originalFileName: 'audio.wav' };
-    } else {
-      return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
-    }
+  } else if (contentType.startsWith("audio/") || contentType.startsWith("video/")) {
+    const blob = await request.blob();
+    body = { file: blob, originalFileName: contentType.startsWith("video/") ? 'video.mp4' : 'audio.wav' };
+  } else {
+    return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
+  }
 
     const blobUrl = body.blobUrl || body.file;
     const originalFileName = body.originalFileName || 'audio.mp3';
@@ -94,11 +95,17 @@ export async function POST(request: Request) {
     // OpenAI ondersteunt het verwerken van bestanden via URL
     try {
       const transcription = await withRetry(async () => {
-        let fileToUpload = blobUrl;
+        let fileToUpload;
         if (typeof blobUrl === "string") {
           const resp = await fetch(blobUrl);
           const arrayBuffer = await resp.arrayBuffer();
-          fileToUpload = Object.assign(Buffer.from(arrayBuffer), { name: originalFileName });
+          fileToUpload = Buffer.from(arrayBuffer);
+          fileToUpload = Object.assign(fileToUpload, { name: originalFileName });
+        } else {
+          // If blobUrl is a Blob (or File), convert it to Buffer
+          const arrayBuffer = await blobUrl.arrayBuffer();
+          fileToUpload = Buffer.from(arrayBuffer);
+          fileToUpload = Object.assign(fileToUpload, { name: originalFileName });
         }
         return await openai.audio.transcriptions.create({
           file: fileToUpload,
