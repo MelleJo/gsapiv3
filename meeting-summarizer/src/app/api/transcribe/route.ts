@@ -96,19 +96,32 @@ export async function POST(request: Request) {
     try {
       const transcription = await withRetry(async () => {
         let fileToUpload;
+        const mimeTypes = {
+          flac: 'audio/flac',
+          m4a: 'audio/mp4',
+          mp3: 'audio/mpeg',
+          mp4: 'video/mp4',
+          mpeg: 'audio/mpeg',
+          mpga: 'audio/mpeg',
+          oga: 'audio/ogg',
+          ogg: 'audio/ogg',
+          wav: 'audio/wav',
+          webm: 'audio/webm'
+        };
+        const mimeType = mimeTypes[fileExt as keyof typeof mimeTypes] || 'application/octet-stream';
+
         if (typeof blobUrl === "string") {
           const resp = await fetch(blobUrl);
           const arrayBuffer = await resp.arrayBuffer();
-          fileToUpload = Buffer.from(arrayBuffer);
-          fileToUpload = Object.assign(fileToUpload, { name: originalFileName });
+          const buffer = Buffer.from(arrayBuffer);
+          fileToUpload = new File([buffer], originalFileName, { type: mimeType, lastModified: Date.now() });
         } else {
-          // If blobUrl is a Blob (or File), convert it to Buffer
           const arrayBuffer = await blobUrl.arrayBuffer();
-          fileToUpload = Buffer.from(arrayBuffer);
-          fileToUpload = Object.assign(fileToUpload, { name: originalFileName });
+          const buffer = Buffer.from(arrayBuffer);
+          fileToUpload = new File([buffer], originalFileName, { type: mimeType, lastModified: Date.now() });
         }
         return await openai.audio.transcriptions.create({
-          file: fileToUpload,
+          file: fileToUpload as any,
           model: modelId,
           language: 'nl',
           response_format: 'text',
