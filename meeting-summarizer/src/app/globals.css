@@ -1,7 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
+/* Rest of your CSS */
 /* Modern design system */
 :root {
   /* Color system */

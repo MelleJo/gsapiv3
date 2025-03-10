@@ -5,22 +5,47 @@ import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 
+// Helper function to add retry logic
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      console.log(`Poging ${attempt} mislukt. ${attempt < maxRetries ? 'Opnieuw proberen...' : 'Opgegeven.'}`);
+      
+      // If this is not the last attempt, wait before retrying
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, delay * attempt)); // Exponential backoff
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const modelId = formData.get('model') as string || 'whisper-1';
+    const body = await request.json();
     
-    if (!file) {
+    // Nieuwe parameters voor Blob URL verwerking
+    const blobUrl = body.blobUrl;
+    const originalFileName = body.originalFileName || 'audio.mp3';
+    const fileType = body.fileType || 'audio/mpeg';
+    const fileSize = body.fileSize || 0;
+    const modelId = body.model || 'whisper-1';
+    
+    if (!blobUrl) {
       return NextResponse.json(
-        { error: 'Geen audiobestand aangeleverd' },
+        { error: 'Geen audio URL aangeleverd' },
         { status: 400 }
       );
     }
 
-    // Get the file extension to validate format
-    const fileName = file.name;
-    const fileExt = fileName.split('.').pop()?.toLowerCase();
+    // Get the file extension from the original filename
+    const fileExt = originalFileName.split('.').pop()?.toLowerCase();
     const validExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
     
     if (!fileExt || !validExtensions.includes(fileExt)) {
@@ -31,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     // Estimate duration and cost
-    const fileSize = file.size;
+    const fileSizeMB = fileSize / (1024 * 1024);
     const estimatedDurationMinutes = estimateAudioDuration(fileSize);
     const selectedModel = whisperModels.find(m => m.id === modelId) || whisperModels[0];
     const estimatedCost = calculateTranscriptionCost(
@@ -39,47 +64,58 @@ export async function POST(request: Request) {
       selectedModel.costPerMinute
     );
 
-    // Convert file to buffer
-    const buffer = Buffer.from(await file.arrayBuffer());
-    
-    // Create a proper file with the correct MIME type
-    const mimeTypes: Record<string, string> = {
-      mp3: 'audio/mpeg',
-      mp4: 'audio/mp4',
-      mpeg: 'audio/mpeg',
-      mpga: 'audio/mpeg',
-      m4a: 'audio/mp4',
-      wav: 'audio/wav',
-      webm: 'audio/webm',
-      flac: 'audio/flac',
-      oga: 'audio/ogg',
-      ogg: 'audio/ogg',
-    };
-    
-    const mimeType = mimeTypes[fileExt] || `audio/${fileExt}`;
-    const audioFile = new File([buffer], file.name, { type: mimeType });
+    console.log(`Verwerken van bestand via Blob URL. Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
 
-    // Send to OpenAI Whisper API with Dutch language specification
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: modelId,
-      language: 'nl', // Specify Dutch language
-      response_format: 'text',
-    });
+    // OpenAI ondersteunt het verwerken van bestanden via URL
+    try {
+      const transcription = await withRetry(async () => {
+        return await openai.audio.transcriptions.create({
+          file_url: blobUrl,  // Gebruik de Blob URL in plaats van een bestand
+          model: modelId,
+          language: 'nl',
+          response_format: 'text',
+          timeout: 300000, // 5 minuten timeout voor grote bestanden
+        });
+      }, 3, 2000);
 
-    // Return results with cost information
-    return NextResponse.json({ 
-      transcription: transcription,
-      usage: {
-        model: selectedModel.name,
-        estimatedDurationMinutes,
-        estimatedCost
+      return NextResponse.json({ 
+        transcription: transcription,
+        usage: {
+          model: selectedModel.name,
+          estimatedDurationMinutes,
+          estimatedCost
+        }
+      });
+    } catch (openaiError: any) {
+      console.error('OpenAI API fout bij het verwerken van Blob URL:', openaiError);
+      
+      let errorMessage = 'OpenAI API fout';
+      let statusCode = 500;
+      
+      // Error handling voor specifieke foutscenario's
+      if (openaiError.message?.includes('file_url')) {
+        errorMessage = 'Probleem met de audio URL. Controleer of de URL toegankelijk is voor OpenAI.';
+      } else if (openaiError.status === 413 || (openaiError.message && openaiError.message.includes('too large'))) {
+        errorMessage = 'Audio bestand te groot voor verwerking door OpenAI. De maximale grootte voor OpenAI is ongeveer 25MB.';
+        statusCode = 413;
+      } else if (openaiError.status === 429) {
+        errorMessage = 'API limiet bereikt. Probeer het over enkele ogenblikken opnieuw.';
+        statusCode = 429;
+      } else if (openaiError.status === 401) {
+        errorMessage = 'Authenticatiefout. Controleer uw OpenAI API-sleutel.';
+        statusCode = 401;
+      } else if (openaiError.message) {
+        errorMessage = `OpenAI Transcriptie fout: ${openaiError.message}`;
       }
-    });
+      
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: statusCode }
+      );
+    }
   } catch (error: any) {
     console.error('Transcriptie fout:', error);
     
-    // Provide more detailed error information in Dutch
     const errorMessage = error.error?.message || error.message || 'Audio transcriptie mislukt';
     const statusCode = error.status || 500;
     

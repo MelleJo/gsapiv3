@@ -35,7 +35,7 @@ export default function Loading() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          Loading Meeting Summarizer
+          Meeting Summarizer Laden
         </motion.h2>
         
         <motion.p
@@ -44,7 +44,7 @@ export default function Loading() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
         >
-          Preparing your AI assistant...
+          Uw AI-assistent wordt voorbereid...
         </motion.p>
       </div>
     </div>

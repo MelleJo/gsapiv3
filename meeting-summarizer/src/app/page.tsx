@@ -6,15 +6,26 @@ import FileUploader from '@/app/components/FileUploader';
 import CustomAudioRecorder from '@/app/components/CustomAudioRecorder';
 import TranscriptionDisplay from '@/app/components/TranscriptionDisplay';
 import SummaryDisplay from '@/app/components/SummaryDisplay';
+import SummaryActions from '@/app/components/SummaryActions';
+import EmailModal from '@/app/components/EmailModal';
+import Notification, { NotificationType } from '@/app/components/Notification';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { countTokens, estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 
+// Interface voor Blob bestand
+interface BlobFile {
+  url: string;
+  size: number;
+  contentType: string;
+  originalName: string;
+}
+
 export default function Home() {
-  // State for audio file
-  const [audioFile, setAudioFile] = useState<File | null>(null);
+  // State voor audio bestand
+  const [audioBlob, setAudioBlob] = useState<BlobFile | null>(null);
   const [audioFileName, setAudioFileName] = useState<string>('');
   
-  // State for transcription and summary
+  // State voor transcriptie en samenvatting
   const [transcription, setTranscription] = useState<string>('');
   const [summary, setSummary] = useState<string>('');
   
@@ -37,12 +48,22 @@ export default function Home() {
   // UI state
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(false);
+  const [notification, setNotification] = useState<{
+    type: NotificationType;
+    message: string;
+    isVisible: boolean;
+  }>({
+    type: 'info',
+    message: '',
+    isVisible: false
+  });
   const mainContainerRef = useRef<HTMLDivElement>(null);
 
-  // Handle file upload or recording
-  const handleAudioCapture = (file: File) => {
-    setAudioFile(file);
-    setAudioFileName(file.name);
+  // Aangepaste functie voor het verwerken van Blob uploads
+  const handleBlobUpload = (blob: BlobFile) => {
+    setAudioBlob(blob);
+    setAudioFileName(blob.originalName);
     // Auto-advance to next step
     setCurrentStep(2);
     
@@ -53,21 +74,63 @@ export default function Home() {
     }, 300);
   };
 
-  // Handle transcription
+  // Voor audio-opnames
+  const handleAudioCapture = async (file: File) => {
+    try {
+      // Opgenomen audio uploaden naar Vercel Blob
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload-blob', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload van opname mislukt');
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      // Verwerk het geüploade bestand
+      handleBlobUpload(data.blob);
+      
+    } catch (error) {
+      console.error("Fout bij uploaden van opname:", error);
+      showNotification('error', error instanceof Error ? error.message : 'Upload van opname mislukt');
+    }
+  };
+
+  // Handle transcription with Blob URL
   const handleTranscribe = async () => {
-    if (!audioFile) return;
+    if (!audioBlob) return;
     
     setIsTranscribing(true);
     
     try {
-      const formData = new FormData();
-      formData.append('file', audioFile);
-      formData.append('model', settings.transcriptionModel);
-      
       const response = await fetch('/api/transcribe', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          blobUrl: audioBlob.url,
+          originalFileName: audioBlob.originalName,
+          fileType: audioBlob.contentType,
+          fileSize: audioBlob.size,
+          model: settings.transcriptionModel
+        })
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Transcriptie mislukt');
+      }
       
       const data = await response.json();
       
@@ -89,8 +152,8 @@ export default function Home() {
         summarySection?.scrollIntoView({ behavior: 'smooth' });
       }, 300);
     } catch (error) {
-      console.error('Transcription error:', error);
-      alert(`Error during transcription: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Transcriptie fout:', error);
+      showNotification('error', `Fout tijdens transcriptie: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
     } finally {
       setIsTranscribing(false);
     }
@@ -98,7 +161,10 @@ export default function Home() {
 
   // Handle summarization
   const handleSummarize = async () => {
-    if (!transcription) return;
+    if (!transcription || transcription.trim() === '') {
+      showNotification('error', 'Transcriptie is leeg of ontbreekt');
+      return;
+    }
     
     setIsSummarizing(true);
     
@@ -115,6 +181,11 @@ export default function Home() {
         })
       });
       
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Onbekende fout tijdens het samenvatten');
+      }
+      
       const data = await response.json();
       
       if (data.error) {
@@ -127,7 +198,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Summarization error:', error);
-      alert(`Error during summarization: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showNotification('error', `Fout tijdens het samenvatten: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
     } finally {
       setIsSummarizing(false);
     }
@@ -135,7 +206,7 @@ export default function Home() {
 
   // Reset all data
   const handleReset = () => {
-    setAudioFile(null);
+    setAudioBlob(null);
     setAudioFileName('');
     setTranscription('');
     setSummary('');
@@ -159,6 +230,43 @@ export default function Home() {
       ...newSettings
     });
   };
+  
+  // Handle email modal
+  const handleOpenEmailModal = () => {
+    setIsEmailModalOpen(true);
+  };
+  
+  const handleCloseEmailModal = () => {
+    setIsEmailModalOpen(false);
+  };
+  
+  // Handle refined summary
+  const handleRefinedSummary = (refinedSummary: string) => {
+    setSummary(refinedSummary);
+    showNotification('success', 'Samenvatting succesvol bijgewerkt');
+  };
+  
+  // Handle email notifications
+  const handleEmailNotification = (success: boolean, message: string) => {
+    showNotification(success ? 'success' : 'error', message);
+  };
+  
+  // Show notification
+  const showNotification = (type: NotificationType, message: string) => {
+    setNotification({
+      type,
+      message,
+      isVisible: true
+    });
+  };
+  
+  // Close notification
+  const closeNotification = () => {
+    setNotification(prev => ({
+      ...prev,
+      isVisible: false
+    }));
+  };
 
   // Card variants for animations
   const cardVariants = {
@@ -169,6 +277,23 @@ export default function Home() {
 
   return (
     <main ref={mainContainerRef} className="min-h-screen bg-neutral-50 pb-20">
+      {/* Notification component */}
+      <Notification
+        type={notification.type}
+        message={notification.message}
+        isVisible={notification.isVisible}
+        onClose={closeNotification}
+      />
+
+      {/* Email modal */}
+      <EmailModal
+        isOpen={isEmailModalOpen}
+        onClose={handleCloseEmailModal}
+        summary={summary}
+        transcription={transcription}
+        onSendEmail={handleEmailNotification}
+      />
+      
       {/* Modern gradient header */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 backdrop-blur-xl z-0" />
@@ -185,7 +310,7 @@ export default function Home() {
               transition={{ delay: 0.2, duration: 0.8 }}
               className="text-5xl font-bold mb-3 text-neutral-800 tracking-tight"
             >
-              Meeting Summarizer
+              Super Kees Online
             </motion.h1>
             <motion.p
               initial={{ y: 20, opacity: 0 }}
@@ -193,7 +318,7 @@ export default function Home() {
               transition={{ delay: 0.4, duration: 0.8 }}
               className="text-lg text-neutral-600 max-w-2xl mx-auto"
             >
-              Transform your audio recordings into comprehensive meeting notes and actionable summaries with AI
+              Transformeer uw audio-opnames naar uitgebreide vergadernotities en bruikbare samenvattingen met AI
             </motion.p>
           </div>
         </motion.div>
@@ -232,13 +357,13 @@ export default function Home() {
           
           <div className="flex justify-between items-center max-w-lg mx-auto mt-2 text-sm">
             <div className={`w-20 text-center ${currentStep >= 1 ? 'text-neutral-800' : 'text-neutral-400'}`}>
-              Add Audio
+              Audio Toevoegen
             </div>
             <div className={`w-20 text-center ${currentStep >= 2 ? 'text-neutral-800' : 'text-neutral-400'}`}>
-              Transcribe
+              Transcriberen
             </div>
             <div className={`w-20 text-center ${currentStep >= 3 ? 'text-neutral-800' : 'text-neutral-400'}`}>
-              Summarize
+              Samenvatten
             </div>
           </div>
         </div>
@@ -253,7 +378,7 @@ export default function Home() {
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            Settings
+            Instellingen
           </button>
         </div>
         
@@ -267,11 +392,11 @@ export default function Home() {
               className="mb-8 overflow-hidden"
             >
               <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
-                <h2 className="text-xl font-semibold text-neutral-800 mb-6">Advanced Settings</h2>
+                <h2 className="text-xl font-semibold text-neutral-800 mb-6">Geavanceerde Instellingen</h2>
                 
                 <div className="grid md:grid-cols-2 gap-8">
                   <div>
-                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Transcription Model</h3>
+                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Transcriptiemodel</h3>
                     <select
                       value={settings.transcriptionModel}
                       onChange={(e) => updateSettings({ transcriptionModel: e.target.value })}
@@ -286,7 +411,7 @@ export default function Home() {
                   </div>
                   
                   <div>
-                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Summarization Model</h3>
+                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Samenvattingsmodel</h3>
                     <select
                       value={settings.summarizationModel}
                       onChange={(e) => updateSettings({ summarizationModel: e.target.value })}
@@ -301,7 +426,7 @@ export default function Home() {
                   </div>
                   
                   <div>
-                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Temperature (Creativity)</h3>
+                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Temperatuur (Creativiteit)</h3>
                     <div className="flex items-center gap-4">
                       <input
                         type="range"
@@ -315,12 +440,12 @@ export default function Home() {
                       <span className="text-sm text-neutral-600 w-12">{settings.temperature}</span>
                     </div>
                     <p className="text-xs text-neutral-500 mt-1">
-                      Lower values produce more consistent results, higher values more creative ones.
+                      Lagere waarden geven consistentere resultaten, hogere waarden creëren meer variatie.
                     </p>
                   </div>
                   
                   <div>
-                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Display Options</h3>
+                    <h3 className="text-sm font-medium text-neutral-700 mb-3">Weergave-opties</h3>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -328,7 +453,7 @@ export default function Home() {
                         onChange={(e) => updateSettings({ showCosts: e.target.checked })}
                         className="accent-blue-600 w-4 h-4"
                       />
-                      <span className="text-sm text-neutral-600">Show estimated costs</span>
+                      <span className="text-sm text-neutral-600">Toon geschatte kosten</span>
                     </label>
                   </div>
                 </div>
@@ -358,9 +483,9 @@ export default function Home() {
                         <line x1="12" x2="12" y1="19" y2="22"></line>
                       </svg>
                     </div>
-                    <h2 className="text-xl font-semibold text-neutral-800">Record Audio</h2>
+                    <h2 className="text-xl font-semibold text-neutral-800">Audio Opnemen</h2>
                   </div>
-                  <p className="text-neutral-600 mb-4">Start recording your meeting directly from your browser.</p>
+                  <p className="text-neutral-600 mb-4">Start met het opnemen van uw vergadering direct vanuit uw browser.</p>
                   <CustomAudioRecorder onAudioRecorded={handleAudioCapture} />
                 </div>
                 
@@ -372,10 +497,10 @@ export default function Home() {
                         <polyline points="14 2 14 8 20 8"></polyline>
                       </svg>
                     </div>
-                    <h2 className="text-xl font-semibold text-neutral-800">Upload File</h2>
+                    <h2 className="text-xl font-semibold text-neutral-800">Bestand Uploaden</h2>
                   </div>
-                  <p className="text-neutral-600 mb-4">Upload an existing recording from your device.</p>
-                  <FileUploader onFileUploaded={handleAudioCapture} />
+                  <p className="text-neutral-600 mb-4">Upload een bestaande opname vanaf uw apparaat.</p>
+                  <FileUploader onFileUploaded={handleBlobUpload} />
                 </div>
               </div>
               
@@ -388,7 +513,7 @@ export default function Home() {
                 >
                   <div className="text-center bg-blue-50 border border-blue-100 text-blue-800 p-4 rounded-xl">
                     <p className="text-sm">
-                      <strong>Tip:</strong> For best results, use clear audio with minimal background noise.
+                      <strong>Tip:</strong> Voor de beste resultaten, gebruik heldere audio met minimale achtergrondruis.
                     </p>
                   </div>
                 </motion.div>
@@ -423,12 +548,12 @@ export default function Home() {
                           <path d="M9 14h6"></path>
                         </svg>
                       </div>
-                      <h2 className="text-xl font-semibold text-neutral-800">Transcribe Audio</h2>
+                      <h2 className="text-xl font-semibold text-neutral-800">Audio Transcriberen</h2>
                     </div>
                     
                     {settings.showCosts && transcriptionCost > 0 && (
                       <div className="text-xs text-neutral-500 bg-neutral-50 px-3 py-1 rounded-full">
-                        Estimated cost: ${transcriptionCost.toFixed(4)}
+                        Geschatte kosten: ${transcriptionCost.toFixed(4)}
                       </div>
                     )}
                   </div>
@@ -447,9 +572,9 @@ export default function Home() {
                   <div className="flex justify-center">
                     <button
                       onClick={handleTranscribe}
-                      disabled={!audioFile || isTranscribing}
+                      disabled={!audioBlob || isTranscribing}
                       className={`px-6 py-3 rounded-xl text-white font-medium flex items-center gap-2 transition-all ${
-                        !audioFile || isTranscribing
+                        !audioBlob || isTranscribing
                           ? 'bg-neutral-300 cursor-not-allowed'
                           : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-lg hover:shadow-blue-200 active:scale-[0.98]'
                       }`}
@@ -460,14 +585,14 @@ export default function Home() {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Transcribing...
+                          Transcriberen...
                         </>
                       ) : (
                         <>
                           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                           </svg>
-                          Start Transcription
+                          Start Transcriptie
                         </>
                       )}
                     </button>
@@ -500,12 +625,12 @@ export default function Home() {
                           <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
                         </svg>
                       </div>
-                      <h2 className="text-xl font-semibold text-neutral-800">Generate Summary</h2>
+                      <h2 className="text-xl font-semibold text-neutral-800">Samenvatting Genereren</h2>
                     </div>
                     
                     {settings.showCosts && summaryCost > 0 && (
                       <div className="text-xs text-neutral-500 bg-neutral-50 px-3 py-1 rounded-full">
-                        Estimated cost: ${summaryCost.toFixed(4)}
+                        Geschatte kosten: ${summaryCost.toFixed(4)}
                       </div>
                     )}
                   </div>
@@ -526,7 +651,7 @@ export default function Home() {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Generating Summary...
+                          Samenvatting Genereren...
                         </>
                       ) : (
                         <>
@@ -534,7 +659,7 @@ export default function Home() {
                             <path d="M12 8H8a4 4 0 1 0 0 8h4"></path>
                             <path d="M16 12h-4"></path>
                           </svg>
-                          Generate Summary
+                          Genereer Samenvatting
                         </>
                       )}
                     </button>
@@ -542,6 +667,16 @@ export default function Home() {
                 </div>
                 
                 <SummaryDisplay summary={summary} isLoading={isSummarizing} />
+                
+                {/* Add SummaryActions component here */}
+                {summary && !isSummarizing && (
+                  <SummaryActions
+                    summary={summary}
+                    transcription={transcription}
+                    onRefinedSummary={handleRefinedSummary}
+                    onOpenEmailModal={handleOpenEmailModal}
+                  />
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -557,7 +692,7 @@ export default function Home() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38" />
               </svg>
-              Start Over
+              Opnieuw Beginnen
             </button>
           </div>
         )}

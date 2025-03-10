@@ -47,7 +47,7 @@ export default function Header() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-5xl font-bold mb-3 text-gradient">
-              Meeting Summarizer
+              Vergadering Samenvatting
             </h1>
           </motion.div>
           
@@ -57,8 +57,8 @@ export default function Header() {
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             <p className="text-lg text-neutral-700 max-w-2xl mx-auto">
-              Transform your audio recordings into comprehensive meeting notes 
-              and actionable summaries with AI
+              Transformeer uw audio-opnames in uitgebreide vergadernotities 
+              en bruikbare samenvattingen met AI
             </p>
           </motion.div>
         </div>

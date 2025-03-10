@@ -60,8 +60,8 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
-      alert('Failed to access microphone. Please make sure you have granted permission.');
+      console.error('Fout bij toegang tot microfoon:', error);
+      alert('Geen toegang tot microfoon. Controleer of u toestemming heeft verleend.');
     }
   };
 
@@ -92,7 +92,7 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
 
   return (
     <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold text-gray-800">Record Meeting</h2>
+      <h2 className="text-xl font-semibold text-gray-800">Vergadering Opnemen</h2>
       
       <div className="relative">
         <motion.div
@@ -108,7 +108,7 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
         <button
           onClick={toggleRecording}
           className="relative z-10 w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
-          aria-label={isRecording ? "Stop recording" : "Start recording"}
+          aria-label={isRecording ? "Stop opname" : "Start opname"}
         >
           {isRecording ? (
             <div className="w-5 h-5 bg-white rounded"></div>
@@ -121,12 +121,12 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
       {isRecording && (
         <div className="flex items-center text-red-500 font-medium animate-pulse">
           <span className="mr-2 h-2 w-2 bg-red-500 rounded-full inline-block"></span>
-          Recording {formatTime(recordingTime)}
+          Opname {formatTime(recordingTime)}
         </div>
       )}
       
       <p className="text-sm text-gray-500 mt-2">
-        Click to {isRecording ? 'stop' : 'start'} recording
+        Klik om opname te {isRecording ? 'stoppen' : 'starten'}
       </p>
     </div>
   );

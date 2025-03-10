@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Meeting Summarizer - AI Transcription & Summary',
-  description: 'Transform your meetings into actionable summaries with AI technology',
+  title: 'Super Kees Online - AI Transcriptie & Samenvatting',
+  description: 'Transformeer uw vergaderingen in bruikbare samenvattingen met AI-technologie',
   icons: {
     icon: '/favicon.ico',
   },
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="nl" className={inter.className}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <meta name="theme-color" content="#ffffff" />
@@ -31,7 +31,7 @@ export default function RootLayout({
       <body className="antialiased">
         <main>{children}</main>
         <footer className="mt-auto py-6 text-center text-sm text-neutral-500">
-          <p>© {new Date().getFullYear()} Meeting Summarizer - Powered by AI</p>
+          <p>© {new Date().getFullYear()} Super Kees Online - Powered by AI</p>
         </footer>
       </body>
     </html>

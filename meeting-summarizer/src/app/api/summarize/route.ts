@@ -16,8 +16,15 @@ const NON_TEMPERATURE_MODELS = ['o1', 'o1-mini', 'o3-mini'];
 
 export async function POST(request: Request) {
   try {
-    const { text, model = 'gpt-4o-mini', temperature = 0.3 } = await request.json() as SummarizeRequest;
+    // Parse request body
+    const body = await request.json();
     
+    // Extract parameters with defaults
+    const text = body.text;
+    const model = body.model || 'gpt-4o-mini';
+    const temperature = body.temperature !== undefined ? body.temperature : 0.3;
+    
+    // Validate text input
     if (!text) {
       return NextResponse.json(
         { error: 'Geen tekst aangeleverd voor samenvatting' },
@@ -25,14 +32,18 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log(`Samenvatten van tekst met lengte ${text.length} met model ${model}`);
+
     // Count input tokens for cost estimation
     const inputTokens = countTokens(text);
     
     // Get selected model config
-    const selectedModel = chatModels.find(m => m.id === model) || chatModels.find(m => m.id === 'gpt-4o-mini')!;
+    const selectedModel = chatModels.find(m => m.id === model) || 
+                         chatModels.find(m => m.id === 'gpt-4o-mini') || 
+                         chatModels[0];
 
     // Create API request options with Dutch meeting notes system prompt
-    const requestOptions: any = {
+    const requestOptions = {
       model: selectedModel.id,
       messages: [
         {
@@ -60,35 +71,49 @@ Houd het professioneel, beknopt en actiegericht. Begin elke sectie met de sectie
       requestOptions.temperature = temperature;
     }
 
-    const response = await openai.chat.completions.create(requestOptions);
+    try {
+      const response = await openai.chat.completions.create(requestOptions);
 
-    // Get completion tokens from API response if available
-    let outputTokens = 0;
-    if (response.usage?.completion_tokens) {
-      outputTokens = response.usage.completion_tokens;
-    } else {
-      // Fallback to estimation
-      outputTokens = countTokens(response.choices[0].message.content || '');
-    }
+      // Get completion tokens from API response if available
+      let outputTokens = 0;
+      if (response.usage?.completion_tokens) {
+        outputTokens = response.usage.completion_tokens;
+      } else {
+        // Fallback to estimation
+        outputTokens = countTokens(response.choices[0].message.content || '');
+      }
 
-    // Calculate costs
-    const cost = calculateTextCost(
-      inputTokens,
-      outputTokens,
-      selectedModel.inputCost,
-      selectedModel.outputCost
-    );
-
-    return NextResponse.json({ 
-      summary: response.choices[0].message.content,
-      usage: {
-        model: selectedModel.name,
+      // Calculate costs
+      const cost = calculateTextCost(
         inputTokens,
         outputTokens,
-        totalTokens: inputTokens + outputTokens,
-        cost
+        selectedModel.inputCost,
+        selectedModel.outputCost
+      );
+
+      return NextResponse.json({ 
+        summary: response.choices[0].message.content,
+        usage: {
+          model: selectedModel.name,
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          cost
+        }
+      });
+    } catch (openaiError: any) {
+      console.error("OpenAI API fout:", openaiError);
+      
+      let errorMessage = "Fout in communicatie met OpenAI";
+      if (openaiError.message) {
+        errorMessage = openaiError.message;
       }
-    });
+      
+      return NextResponse.json(
+        { error: `OpenAI fout: ${errorMessage}` },
+        { status: 500 }
+      );
+    }
   } catch (error: any) {
     console.error('Samenvatting fout:', error);
     const errorMessage = error.error?.message || error.message || 'Samenvatten van tekst mislukt';
