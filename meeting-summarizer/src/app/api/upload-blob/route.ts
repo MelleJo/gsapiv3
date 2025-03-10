@@ -1,7 +1,7 @@
 // src/app/api/upload-blob/route.ts
 import { NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import { nanoid } from 'nanoid';
+import { nanoid } from '@/lib/nanoid';
 
 export const runtime = 'edge';
 
@@ -53,11 +53,13 @@ export async function POST(request: Request) {
         originalName: fileName,
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Fout bij uploaden naar Vercel Blob:', error);
     
+    const errorMessage = error instanceof Error ? error.message : 'Fout bij uploaden naar Vercel Blob';
+    
     return NextResponse.json(
-      { error: error.message || 'Fout bij uploaden naar Vercel Blob' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

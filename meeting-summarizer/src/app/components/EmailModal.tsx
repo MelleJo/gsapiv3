@@ -25,59 +25,6 @@ export default function EmailModal({ isOpen, onClose, summary, transcription = '
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   
-  // Effect to format summary as email on initial load
-  useEffect(() => {
-    if (isOpen && summary) {
-      setEmailContent(summary);
-      formatAsEmail();
-    }
-  }, [isOpen, summary]);
-  
-  // Effect to synchronize emailList with recipients string
-  useEffect(() => {
-    if (recipients.trim()) {
-      const emails = recipients.split(',').map(email => email.trim()).filter(email => email);
-      setEmailList(emails);
-    } else {
-      setEmailList([]);
-    }
-  }, [recipients]);
-
-  // Effect to update recipients when emailList changes
-  useEffect(() => {
-    setRecipients(emailList.join(', '));
-  }, [emailList]);
-  
-  // Handle click outside modal to close
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onClose]);
-  
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-    
-    return () => {
-      document.body.style.overflow = 'auto';
-    };
-  }, [isOpen]);
-  
   // Format the summary as an email using the API
   const formatAsEmail = async () => {
     setIsFormatting(true);
@@ -129,6 +76,60 @@ ${senderName || 'Super Kees Online'}`;
       setIsFormatting(false);
     }
   };
+  
+  // Effect to format summary as email on initial load
+  useEffect(() => {
+    if (isOpen && summary) {
+      setEmailContent(summary);
+      formatAsEmail();
+    }
+    // Add formatAsEmail to dependency array
+  }, [isOpen, summary, formatAsEmail]);
+  
+  // Effect to synchronize emailList with recipients string
+  useEffect(() => {
+    if (recipients.trim()) {
+      const emails = recipients.split(',').map(email => email.trim()).filter(email => email);
+      setEmailList(emails);
+    } else {
+      setEmailList([]);
+    }
+  }, [recipients]);
+
+  // Effect to update recipients when emailList changes
+  useEffect(() => {
+    setRecipients(emailList.join(', '));
+  }, [emailList]);
+  
+  // Handle click outside modal to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+  
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen]);
   
   // Validate a single email address
   const validateEmail = (email: string): boolean => {
@@ -343,7 +344,7 @@ ${senderName || 'Super Kees Online'}`;
                   </div>
                   
                   <p className="text-xs text-neutral-500 mt-1">
-                    Voeg meerdere e-mailadressen toe door na elk adres op "Toevoegen" te klikken
+                    Voeg meerdere e-mailadressen toe door na elk adres op &quot;Toevoegen&quot; te klikken
                   </p>
                 </div>
                 

@@ -1,0 +1,14 @@
+{
+    "buildCommand": "npm run build",
+    "devCommand": "npm run dev",
+    "cleanUrls": true,
+    "ignoreCommand": "",
+    "crons": [],
+    "functions": {
+      "api/**/*": {
+        "memory": 1024
+      }
+    },
+    "framework": "nextjs",
+    "outputDirectory": ".next"
+  }

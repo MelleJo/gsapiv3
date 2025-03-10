@@ -5,11 +5,12 @@ import openai from '@/lib/openai';
 import { chatModels } from '@/lib/config';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 
-interface SummarizeRequest {
+// Als een type niet wordt gebruikt, hou het privé om ESLint warnings te vermijden
+type SummarizeRequestType = {
   text: string;
   model?: string;
   temperature?: number;
-}
+};
 
 // Models that don't support temperature parameter
 const NON_TEMPERATURE_MODELS = ['o1', 'o1-mini', 'o3-mini'];
@@ -17,7 +18,7 @@ const NON_TEMPERATURE_MODELS = ['o1', 'o1-mini', 'o3-mini'];
 export async function POST(request: Request) {
   try {
     // Parse request body
-    const body = await request.json();
+    const body: SummarizeRequestType = await request.json();
     
     // Extract parameters with defaults
     const text = body.text;
@@ -43,7 +44,11 @@ export async function POST(request: Request) {
                          chatModels[0];
 
     // Create API request options with Dutch meeting notes system prompt
-    const requestOptions = {
+    const requestOptions: {
+      model: string;
+      messages: {role: string, content: string}[];
+      temperature?: number;
+    } = {
       model: selectedModel.id,
       messages: [
         {
@@ -101,12 +106,12 @@ Houd het professioneel, beknopt en actiegericht. Begin elke sectie met de sectie
           cost
         }
       });
-    } catch (openaiError: any) {
-      console.error("OpenAI API fout:", openaiError);
+    } catch (error) {
+      console.error("OpenAI API fout:", error);
       
       let errorMessage = "Fout in communicatie met OpenAI";
-      if (openaiError.message) {
-        errorMessage = openaiError.message;
+      if (error instanceof Error) {
+        errorMessage = error.message;
       }
       
       return NextResponse.json(
@@ -114,10 +119,11 @@ Houd het professioneel, beknopt en actiegericht. Begin elke sectie met de sectie
         { status: 500 }
       );
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Samenvatting fout:', error);
-    const errorMessage = error.error?.message || error.message || 'Samenvatten van tekst mislukt';
-    const statusCode = error.status || 500;
+    const errorMessage = error instanceof Error ? error.message : 'Samenvatten van tekst mislukt';
+    const statusCode = typeof error === 'object' && error !== null && 'status' in error ? 
+      Number(error.status) : 500;
     
     return NextResponse.json(
       { error: errorMessage },
