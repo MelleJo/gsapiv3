@@ -5,7 +5,7 @@
     "ignoreCommand": "",
     "crons": [],
     "functions": {
-      "api/**/*": {
+      "app/api/**/*": {
         "memory": 1024
       }
     },
