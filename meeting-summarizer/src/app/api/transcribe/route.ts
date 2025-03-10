@@ -70,11 +70,10 @@ export async function POST(request: Request) {
     try {
       const transcription = await withRetry(async () => {
         return await openai.audio.transcriptions.create({
-          file_url: blobUrl,  // Gebruik de Blob URL in plaats van een bestand
+          file: blobUrl,  // Gebruik de Blob URL in plaats van een bestand
           model: modelId,
           language: 'nl',
           response_format: 'text',
-          timeout: 300000, // 5 minuten timeout voor grote bestanden
         });
       }, 3, 2000);
 
