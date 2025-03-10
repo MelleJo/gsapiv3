@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     // Nieuwe parameters voor Blob URL verwerking
     const blobUrl = body.blobUrl;
     const originalFileName = body.originalFileName || 'audio.mp3';
-    const fileType = body.fileType || 'audio/mpeg';
+    // Remove unused fileType variable
     const fileSize = body.fileSize || 0;
     const modelId = body.model || 'whisper-1';
     

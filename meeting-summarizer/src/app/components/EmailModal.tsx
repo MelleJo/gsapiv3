@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface EmailModalProps {
@@ -26,7 +26,8 @@ export default function EmailModal({ isOpen, onClose, summary, transcription = '
   const modalRef = useRef<HTMLDivElement>(null);
   
   // Format the summary as an email using the API
-  const formatAsEmail = async () => {
+  // Wrapped in useCallback to avoid recreating this function on every render
+  const formatAsEmail = useCallback(async () => {
     setIsFormatting(true);
     setError(null);
     
@@ -75,7 +76,7 @@ ${senderName || 'Super Kees Online'}`;
     } finally {
       setIsFormatting(false);
     }
-  };
+  }, [summary, transcription, senderName]);
   
   // Effect to format summary as email on initial load
   useEffect(() => {
@@ -83,7 +84,6 @@ ${senderName || 'Super Kees Online'}`;
       setEmailContent(summary);
       formatAsEmail();
     }
-    // Add formatAsEmail to dependency array
   }, [isOpen, summary, formatAsEmail]);
   
   // Effect to synchronize emailList with recipients string
