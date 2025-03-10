@@ -65,7 +65,6 @@ export async function POST(request: Request) {
 
     console.log(`Verwerken van bestand via Blob URL. Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
 
-    // Download the file from the Blob URL
     try {
       const transcription = await withRetry(async () => {
         // First download the file from the Blob URL
