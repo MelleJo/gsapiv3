@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { chatModels } from '@/lib/config';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 // Als een type niet wordt gebruikt, hou het privé om ESLint warnings te vermijden
 type SummarizeRequestType = {
@@ -43,17 +44,11 @@ export async function POST(request: Request) {
                          chatModels.find(m => m.id === 'gpt-4o-mini') || 
                          chatModels[0];
 
-    // Create API request options with Dutch meeting notes system prompt
-    const requestOptions: {
-      model: string;
-      messages: {role: string, content: string}[];
-      temperature?: number;
-    } = {
-      model: selectedModel.id,
-      messages: [
-        {
-          role: 'system',
-          content: `Je bent een expert in het samenvatten van vergaderingen. Maak een beknopte maar volledige samenvatting van de volgende vergaderingstranscriptie in het Nederlands.
+    // Create messages array with proper typing for OpenAI API
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: `Je bent een expert in het samenvatten van vergaderingen. Maak een beknopte maar volledige samenvatting van de volgende vergaderingstranscriptie in het Nederlands.
 
 Structureer je samenvatting in de volgende secties:
 1. Overzicht: Een korte introductie van het doel en de context van de vergadering
@@ -63,17 +58,22 @@ Structureer je samenvatting in de volgende secties:
 5. Vervolgstappen: Geplande volgende stappen of vergaderingen
 
 Houd het professioneel, beknopt en actiegericht. Begin elke sectie met de sectienaam gevolgd door een dubbele punt, bijvoorbeeld "Overzicht: " of "Actiepunten: ".`
-        },
-        {
-          role: 'user',
-          content: text
-        }
-      ]
+      },
+      {
+        role: 'user',
+        content: text
+      }
+    ];
+
+    // Create API request options with Dutch meeting notes system prompt
+    const requestOptions = {
+      model: selectedModel.id,
+      messages: messages
     };
     
     // Only add temperature for models that support it
-    if (!NON_TEMPERATURE_MODELS.includes(selectedModel.id)) {
-      requestOptions.temperature = temperature;
+    if (!NON_TEMPERATURE_MODELS.includes(selectedModel.id) && temperature !== undefined) {
+      Object.assign(requestOptions, { temperature });
     }
 
     try {

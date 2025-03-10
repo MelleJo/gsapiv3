@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { chatModels } from '@/lib/config';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 // Models that don't support temperature parameter
 const NON_TEMPERATURE_MODELS = ['o1', 'o1-mini', 'o3-mini'];
@@ -121,24 +122,27 @@ export async function POST(request: Request) {
 
     console.log(`Gebruik model: ${actualModel}`);
 
+    // Create properly typed messages for OpenAI API
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: systemMessage
+      },
+      {
+        role: 'user',
+        content: userMessage
+      }
+    ];
+
     // Create API request
-    const requestOptions: any = {
+    const requestOptions = {
       model: actualModel,
-      messages: [
-        {
-          role: 'system',
-          content: systemMessage
-        },
-        {
-          role: 'user',
-          content: userMessage
-        }
-      ]
+      messages: messages
     };
     
     // Only add temperature for models that support it
     if (!NON_TEMPERATURE_MODELS.includes(actualModel)) {
-      requestOptions.temperature = 0.7;
+      Object.assign(requestOptions, { temperature: 0.7 });
     }
 
     try {
