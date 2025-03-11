@@ -22,18 +22,23 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       return;
     }
     const file = inputFileRef.current.files[0];
-    try {
-      setUploading(true);
-      const blob = await put(file.name, file, { access: "public" });
-      setBlobResult(blob);
-      if (onFileUploaded) {
-        onFileUploaded(blob);
-      }
-    } catch (err: any) {
-      setError("Upload failed: " + err.message);
-    } finally {
-      setUploading(false);
+  try {
+    setUploading(true);
+    const result = await put(file.name, file, { access: "public" });
+    const blob: BlobFile = { 
+      ...result, 
+      size: file.size, 
+      originalName: file.name 
+    };
+    setBlobResult(blob);
+    if (onFileUploaded) {
+      onFileUploaded(blob);
     }
+  } catch (err: any) {
+    setError("Upload failed: " + err.message);
+  } finally {
+    setUploading(false);
+  }
   }
 
   return (
