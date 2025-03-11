@@ -2,7 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@vercel/blob": ["src/app/types/vercelBlob.d.ts"],
+      "@vercel/blob": ["src/app/types/vercelBlob"],
       "@/*": ["./src/*"]
     },
     "target": "ES2017",
