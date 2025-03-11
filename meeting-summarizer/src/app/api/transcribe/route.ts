@@ -1,5 +1,3 @@
-// src/app/api/transcribe/route.ts
-
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
@@ -51,12 +49,12 @@ export async function POST(request: Request) {
         file: fileField,
         originalFileName: fileField instanceof File ? fileField.name : "audio.mp3"
       };
-  } else if (contentType.startsWith("audio/") || contentType.startsWith("video/")) {
-    const blob = await request.blob();
-    body = { file: blob, originalFileName: contentType.startsWith("video/") ? 'video.mp4' : 'audio.wav' };
-  } else {
-    return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
-  }
+    } else if (contentType.startsWith("audio/") || contentType.startsWith("video/")) {
+      const blob = await request.blob();
+      body = { file: blob, originalFileName: contentType.startsWith("video/") ? 'video.mp4' : 'audio.wav' };
+    } else {
+      return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
+    }
 
     const blobUrl = body.blobUrl || body.file;
     const originalFileName = body.originalFileName || 'audio.mp3';
@@ -96,11 +94,12 @@ export async function POST(request: Request) {
     try {
       const transcription = await withRetry(async () => {
         let fileToUpload;
+        const isVideo = contentType.startsWith("video/");
         const mimeTypes = {
           flac: 'audio/flac',
-          m4a: 'audio/mp4',
+          m4a: 'audio/x-m4a',
           mp3: 'audio/mpeg',
-          mp4: 'video/mp4',
+          mp4: isVideo ? 'video/mp4' : 'audio/mp4',
           mpeg: 'audio/mpeg',
           mpga: 'audio/mpeg',
           oga: 'audio/ogg',

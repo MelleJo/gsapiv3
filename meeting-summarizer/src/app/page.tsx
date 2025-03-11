@@ -10,14 +10,7 @@ import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
 import Notification, { NotificationType } from '@/app/components/Notification';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
-
-// Interface voor Blob bestand
-interface BlobFile {
-  url: string;
-  size: number;
-  contentType: string;
-  originalName: string;
-}
+import { BlobFile } from '@vercel/blob';
 
 export default function Home() {
   // State voor audio bestand
