@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const blob = await put(uniqueFileName, file, {
       access: 'public',
       contentType: file.type,
-    });
+    } as any);
 
     return NextResponse.json({
       success: true,
