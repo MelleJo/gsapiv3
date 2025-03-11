@@ -35,7 +35,7 @@ export default function Loading() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          Meeting Summarizer Laden
+          Super Kees Online laden
         </motion.h2>
         
         <motion.p
