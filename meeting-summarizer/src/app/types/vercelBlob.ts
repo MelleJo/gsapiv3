@@ -11,11 +11,11 @@ export async function put(
   file: File,
   options: { access: "public" | "private"; contentType?: string }
 ): Promise<BlobFile> {
-  // Dummy implementation: replace with actual implementation if available.
+  // Dummy implementation: simulate a valid, resolvable Blob URL for testing.
   return new Promise((resolve) => {
     resolve({
-      url: "https://dummy.vercel.blob/" + name,
-      pathname: "/dummy/" + name,
+      url: "https://example.com/blob/" + name,
+      pathname: "/blob/" + name,
       size: file.size,
       contentType: options.contentType || file.type,
       originalName: file.name
