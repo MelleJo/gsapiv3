@@ -1,9 +1,8 @@
-/// <reference path="../types/vercelBlob.d.ts" />
 "use client";
 
 import { useRef, useState } from "react";
 import { put } from "@vercel/blob";
-import type { BlobFile } from "@/app/types/vercelBlob";
+import type { BlobFile } from "../types/vercelBlob";
 
 interface FileUploaderProps {
   onFileUploaded?: (blob: BlobFile) => void;

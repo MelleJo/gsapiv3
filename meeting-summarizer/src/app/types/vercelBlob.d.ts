@@ -12,4 +12,6 @@ declare module "@vercel/blob" {
     file: File,
     options: { access: "public" | "private"; contentType?: string }
   ): Promise<BlobFile>;
+
+  export {};
 }
