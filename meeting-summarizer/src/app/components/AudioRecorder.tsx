@@ -3,7 +3,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { AudioRecorder, useAudioRecorder } from 'react-audio-voice-recorder';
-import { motion } from 'framer-motion';
+import { motion, MotionProps } from 'framer-motion';
+const MotionDiv = motion.div as React.ComponentType<React.HTMLAttributes<HTMLDivElement> & MotionProps>;
 
 interface AudioRecorderProps {
   onAudioRecorded: (file: File) => void;
@@ -58,7 +59,7 @@ export default function RecordAudio({ onAudioRecorded }: AudioRecorderProps) {
       <h2 className="text-xl font-semibold text-gray-800">Record Meeting</h2>
       
       <div className="relative">
-        <motion.div
+        <MotionDiv
           animate={isRecording ? {
             scale: [1, 1.1, 1],
             opacity: [1, 0.8, 1],

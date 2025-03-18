@@ -1,3 +1,4 @@
+/* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -90,7 +91,7 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  text-fill-color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Focus styles */
@@ -129,6 +130,7 @@ button {
 /* Range input styling */
 input[type="range"] {
   -webkit-appearance: none;
+  appearance: none;
   margin: 10px 0;
   width: 100%;
   height: 6px;
@@ -175,4 +177,37 @@ body {
   transition-property: background-color;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
+}
+
+/* Custom styles for react-audio-voice-recorder */
+.audio-recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 1rem auto;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgb(var(--color-neutral-300));
+  padding: 1rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+.audio-recorder button {
+  background-color: rgb(var(--color-primary));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.audio-recorder button:hover {
+  background-color: rgb(var(--color-primary-dark));
+}
+
+.audio-recorder .timer {
+  font-size: 1rem;
+  color: rgb(var(--color-neutral-600));
+  margin-top: 0.5rem;
 }
