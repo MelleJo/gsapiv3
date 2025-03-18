@@ -15,7 +15,11 @@ const nextConfig = {
     return config;
   },
   // Ensure CSS processing is enabled
-  reactStrictMode: true
+  reactStrictMode: true,
+  // Explicitly enable PostCSS processing for Tailwind
+  postcss: true,
+  // Ensure static assets are properly handled
+  poweredByHeader: false,
 };
 
 module.exports = nextConfig;
