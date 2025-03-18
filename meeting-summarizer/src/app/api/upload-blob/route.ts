@@ -24,14 +24,54 @@ export async function POST(request: Request) {
     const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
     const uniqueFileName = `${nanoid()}-${Date.now()}.${fileExt}`;
     
-    // Toegestane bestandsformaten controleren
-    const validExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
+    // Create a comprehensive mapping of file extensions to MIME types
+    const validMimeTypes = {
+      // Common audio formats
+      mp3: ['audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3'],
+      wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
+      ogg: ['audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga'],
+      flac: ['audio/flac', 'audio/x-flac'],
+      m4a: ['audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4'],
+      aac: ['audio/aac', 'audio/x-aac', 'audio/aacp'],
+      mpeg: ['audio/mpeg', 'audio/x-mpeg'],
+      mpga: ['audio/mpeg', 'audio/mpga'],
+      oga: ['audio/ogg', 'audio/oga'],
+      webm: ['audio/webm', 'video/webm'],
+      mp4: ['video/mp4', 'audio/mp4', 'application/mp4', 'video/x-mp4']
+    };
     
-    if (!validExtensions.includes(fileExt)) {
+    // Valid extensions list (for user-friendly error messages)
+    const validExtensions = Object.keys(validMimeTypes);
+    
+    // Validate file extension
+    const isValidExtension = validExtensions.includes(fileExt);
+    
+    // Get file type from File object
+    const fileType = file.type.toLowerCase();
+    
+    // Check if MIME type is valid based on our mapping
+    const isValidMimeType = Object.values(validMimeTypes).some(types => 
+      types.includes(fileType)
+    );
+    
+    // Special case for m4a files which might be reported as mp4 audio
+    const isM4aWithMp4MimeType = 
+      (fileExt === 'm4a' && fileType === 'audio/mp4') || 
+      (fileExt === 'm4a' && fileType === 'video/mp4');
+    
+    if (!isValidExtension && !isValidMimeType && !isM4aWithMp4MimeType) {
       return Response.json(
         { error: `Ongeldig bestandsformaat. Ondersteunde formaten: ${validExtensions.join(', ')}` },
         { status: 400 }
       );
+    }
+    
+    // Set appropriate content type for the upload
+    let uploadContentType = file.type;
+    
+    // Fix content type for special cases
+    if (fileExt === 'm4a' && fileType === 'video/mp4') {
+      uploadContentType = 'audio/mp4';
     }
 
     // File size check and logging
@@ -53,7 +93,7 @@ export async function POST(request: Request) {
     // Upload naar Vercel Blob
     const blob = await put(uniqueFileName, file, {
       access: 'public',
-      contentType: file.type,
+      contentType: uploadContentType,
     } as any);
 
     return Response.json({
@@ -61,7 +101,7 @@ export async function POST(request: Request) {
       blob: {
         url: blob.url,
         size: fileSize,
-        contentType: file.type,
+        contentType: uploadContentType,
         originalName: fileName,
       }
     });

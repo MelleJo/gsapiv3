@@ -62,11 +62,37 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
 
     const file = inputFileRef.current.files[0];
     
-    // Check file type
-    const validTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/m4a', 'audio/oga', 'audio/webm', 'video/mp4', 'video/webm'];
-    const fileType = file.type;
+    // Create a comprehensive mapping of file extensions to valid MIME types
+    const validMimeTypes = {
+      // Common audio formats
+      mp3: ['audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3'],
+      wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
+      ogg: ['audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga'],
+      flac: ['audio/flac', 'audio/x-flac'],
+      m4a: ['audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4'],
+      aac: ['audio/aac', 'audio/x-aac', 'audio/aacp'],
+      webm: ['audio/webm'],
+      // Video formats that contain audio
+      mp4: ['video/mp4', 'video/x-mp4', 'application/mp4'],
+      videoWebm: ['video/webm']
+    };
     
-    if (!validTypes.some(type => fileType.includes(type.split('/')[1]))) {
+    // Get file extension from name and MIME type
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+    const fileType = file.type.toLowerCase();
+    
+    // Check if the file is a valid audio or video type
+    const isValidType = 
+      // Check if it's a recognized audio/video MIME type
+      fileType.startsWith('audio/') || fileType.startsWith('video/') ||
+      // Check against our specific mappings
+      Object.values(validMimeTypes).some(mimeTypes => 
+        mimeTypes.includes(fileType)
+      ) ||
+      // Fallback to extension check if browsers report generic MIME types
+      (fileExt && Object.keys(validMimeTypes).includes(fileExt));
+    
+    if (!isValidType) {
       setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
       return;
     }
@@ -215,8 +241,35 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       
-      // Check if the file is an audio or video file
-      if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+      // Use the same validation logic as handleUpload
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+      const fileType = file.type.toLowerCase();
+      
+      // Create a comprehensive mapping of file extensions to valid MIME types
+      const validMimeTypes = {
+        mp3: ['audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3'],
+        wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
+        ogg: ['audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga'],
+        flac: ['audio/flac', 'audio/x-flac'],
+        m4a: ['audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4'],
+        aac: ['audio/aac', 'audio/x-aac', 'audio/aacp'],
+        webm: ['audio/webm'],
+        mp4: ['video/mp4', 'video/x-mp4', 'application/mp4'],
+        videoWebm: ['video/webm']
+      };
+      
+      // Check if the file is a valid audio or video type
+      const isValidType = 
+        // Check if it's a recognized audio/video MIME type
+        fileType.startsWith('audio/') || fileType.startsWith('video/') ||
+        // Check against our specific mappings
+        Object.values(validMimeTypes).some(mimeTypes => 
+          mimeTypes.includes(fileType)
+        ) ||
+        // Fallback to extension check if browsers report generic MIME types
+        (fileExt && Object.keys(validMimeTypes).includes(fileExt));
+        
+      if (isValidType) {
         if (inputFileRef.current) {
           // Create a DataTransfer object to set the files on the input
           const dataTransfer = new DataTransfer();

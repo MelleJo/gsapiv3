@@ -17,12 +17,35 @@ export async function POST(request: Request) {
         // We could add authentication here if needed
         // This is where we validate the upload before it starts
         
+        // Create a comprehensive list of allowed MIME types
+        const allowedContentTypes = [
+          // MP3 formats
+          'audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3',
+          
+          // WAV formats
+          'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave',
+          
+          // OGG formats
+          'audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga',
+          
+          // FLAC formats
+          'audio/flac', 'audio/x-flac',
+          
+          // M4A and AAC formats
+          'audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4', 
+          'audio/x-aac', 'audio/aacp',
+          
+          // Other audio formats
+          'audio/webm',
+          
+          // Video formats (that contain audio)
+          'video/mp4', 'video/x-mp4', 'application/mp4', 'video/webm'
+        ];
+        
+        console.log(`Client upload requested for: ${pathname}`);
+        
         return {
-          allowedContentTypes: [
-            'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 
-            'audio/flac', 'audio/m4a', 'audio/oga', 'audio/webm', 
-            'video/mp4', 'video/webm'
-          ],
+          allowedContentTypes,
           maximumSizeInBytes: 500 * 1024 * 1024, // 500MB
         };
       },
