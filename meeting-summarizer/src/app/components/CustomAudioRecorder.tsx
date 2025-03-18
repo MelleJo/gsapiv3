@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes } from 'react';
+
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = (props: MotionDivProps) => <motion.div {...props} />;
 
 interface CustomAudioRecorderProps {
   onAudioRecorded: (file: File) => void;
@@ -95,7 +99,7 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
       <h2 className="text-xl font-semibold text-gray-800">Vergadering Opnemen</h2>
       
       <div className="relative">
-        <motion.div
+<MotionDiv
           animate={isRecording ? {
             scale: [1, 1.1, 1],
             opacity: [1, 0.8, 1],
