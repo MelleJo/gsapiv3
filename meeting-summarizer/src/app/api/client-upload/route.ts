@@ -6,7 +6,7 @@ export const runtime = 'edge';
 export const maxDuration = 300; // 5 minutes
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request) {
   const body = (await request.json()) as HandleUploadBody;
 
   try {
@@ -35,10 +35,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
 
-    return NextResponse.json(jsonResponse);
+    return Response.json(jsonResponse);
   } catch (error) {
     console.error('Client upload error:', error);
-    return NextResponse.json(
+    return Response.json(
       { error: error instanceof Error ? error.message : String(error) },
       { status: 400 } // The webhook will retry 5 times waiting for a 200
     );

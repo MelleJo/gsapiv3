@@ -1,5 +1,5 @@
 // src/app/api/upload-blob/route.ts
-import { NextResponse } from 'next/server';
+// import { NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { nanoid } from '@/lib/nanoid';
 
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File | null;
     
     if (!file) {
-      return NextResponse.json(
+      return Response.json(
         { error: 'Geen bestand aangeleverd' },
         { status: 400 }
       );
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const validExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
     
     if (!validExtensions.includes(fileExt)) {
-      return NextResponse.json(
+      return Response.json(
         { error: `Ongeldig bestandsformaat. Ondersteunde formaten: ${validExtensions.join(', ')}` },
         { status: 400 }
       );
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     // set a reasonable limit that works within API limitations
     const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
     if (fileSize > MAX_FILE_SIZE) {
-      return NextResponse.json(
+      return Response.json(
         { error: `Bestand te groot (${fileSizeMB.toFixed(2)}MB). Maximale bestandsgrootte is 500MB.` },
         { status: 400 }
       );
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       contentType: file.type,
     } as any);
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       blob: {
         url: blob.url,
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     
     const errorMessage = error instanceof Error ? error.message : 'Fout bij uploaden naar Vercel Blob';
     
-    return NextResponse.json(
+    return Response.json(
       { error: errorMessage },
       { status: 500 }
     );
