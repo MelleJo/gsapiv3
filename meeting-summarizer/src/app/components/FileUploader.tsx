@@ -63,6 +63,13 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
       return;
     }
+    
+    // Check file size (500MB limit as set in vercel.json)
+    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`Bestand te groot (${(file.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 500MB.`);
+      return;
+    }
 
     try {
       setUploading(true);

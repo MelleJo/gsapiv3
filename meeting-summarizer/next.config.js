@@ -15,7 +15,13 @@ const nextConfig = {
     return config;
   },
   // Ensure CSS processing is enabled
-  reactStrictMode: true
+  reactStrictMode: true,
+  // Configure API routes to accept larger payloads
+  api: {
+    bodyParser: {
+      sizeLimit: '500mb',
+    },
+  },
 };
 
 module.exports = nextConfig;

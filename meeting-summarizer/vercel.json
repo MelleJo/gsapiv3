@@ -1,1 +1,21 @@
-{}
+{
+  "functions": {
+    "api/upload-blob/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "x-middleware-cache",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "bodyParser": {
+    "sizeLimit": "500mb"
+  }
+}
