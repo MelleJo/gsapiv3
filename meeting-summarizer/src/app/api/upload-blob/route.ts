@@ -4,6 +4,8 @@ import { put } from '@vercel/blob';
 import { nanoid } from '@/lib/nanoid';
 
 export const runtime = 'edge';
+export const maxDuration = 300; // 5 minutes max execution time
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
@@ -32,9 +34,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Geen harde limiet voor bestandsgrootte meer
+    // File size check and logging
     const fileSize = file.size;
     const fileSizeMB = fileSize / (1024 * 1024);
+    
+    // Theoretically we can handle up to 4.5GB with Vercel Blob, but
+    // set a reasonable limit that works within API limitations
+    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+    if (fileSize > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Bestand te groot (${fileSizeMB.toFixed(2)}MB). Maximale bestandsgrootte is 500MB.` },
+        { status: 400 }
+      );
+    }
     
     console.log(`Bestandsupload naar Vercel Blob: ${fileName}, grootte: ${fileSizeMB.toFixed(2)}MB`);
 
