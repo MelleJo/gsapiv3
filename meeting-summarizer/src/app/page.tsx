@@ -93,45 +93,14 @@ export default function Home() {
     setTimeout(() => {
       const transcribeSection = document.getElementById('transcribe-section');
       transcribeSection?.scrollIntoView({ behavior: 'smooth' });
+      
+      // Automatically start transcription after upload
+      transcribeAudio(blob);
     }, 300);
   };
-
-  // Voor audio-opnames
-  const handleAudioCapture = async (file: File) => {
-    try {
-      // Opgenomen audio uploaden naar Vercel Blob
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch('/api/upload-blob', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload van opname mislukt');
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      // Verwerk het geüploade bestand
-      handleBlobUpload(data.blob);
-      
-    } catch (error) {
-      console.error("Fout bij uploaden van opname:", error);
-      showNotification('error', error instanceof Error ? error.message : 'Upload van opname mislukt');
-    }
-  };
-
-  // Handle transcription with Blob URL
-  const handleTranscribe = async () => {
-    if (!audioBlob) return;
-    
+  
+  // Separate function to transcribe audio that can work with a direct blob
+  const transcribeAudio = async (blob: BlobFile) => {
     setIsTranscribing(true);
     
     try {
@@ -141,10 +110,10 @@ export default function Home() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          blobUrl: audioBlob.url,
-          originalFileName: audioBlob.originalName,
-          fileType: audioBlob.contentType,
-          fileSize: audioBlob.size,
+          blobUrl: blob.url,
+          originalFileName: blob.originalName,
+          fileType: blob.contentType,
+          fileSize: blob.size,
           model: settings.transcriptionModel
         })
       });
@@ -179,6 +148,44 @@ export default function Home() {
     } finally {
       setIsTranscribing(false);
     }
+  };
+
+  // Voor audio-opnames
+  const handleAudioCapture = async (file: File) => {
+    try {
+      // Opgenomen audio uploaden naar Vercel Blob
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload-blob', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload van opname mislukt');
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      // Verwerk het geüploade bestand
+      handleBlobUpload(data.blob);
+      
+    } catch (error) {
+      console.error("Fout bij uploaden van opname:", error);
+      showNotification('error', error instanceof Error ? error.message : 'Upload van opname mislukt');
+    }
+  };
+
+  // Handle transcription with Blob URL from button click
+  const handleTranscribe = async () => {
+    if (!audioBlob) return;
+    await transcribeAudio(audioBlob);
   };
 
   // Handle summarization

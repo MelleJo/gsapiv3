@@ -36,11 +36,13 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   const [fileName, setFileName] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Handle file selection change
+  // Handle file selection change and automatically upload
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFileName(e.target.files[0].name);
       setError('');
+      // Automatically start upload when file is selected
+      handleUpload();
     }
   };
 
@@ -149,6 +151,9 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           // Set the filename and reset error
           setFileName(file.name);
           setError('');
+          
+          // Automatically start upload when file is dropped
+          handleUpload();
         }
       } else {
         setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
