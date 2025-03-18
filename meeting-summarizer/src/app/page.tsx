@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes, forwardRef } from 'react';
 import FileUploader from '@/app/components/FileUploader';
 import CustomAudioRecorder from '@/app/components/CustomAudioRecorder';
 import TranscriptionDisplay from '@/app/components/TranscriptionDisplay';
@@ -11,6 +12,35 @@ import EmailModal from '@/app/components/EmailModal';
 import Notification, { NotificationType } from '@/app/components/Notification';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { BlobFile } from '@vercel/blob';
+
+// Create properly typed motion components
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
+
+type MotionH1Props = HTMLAttributes<HTMLHeadingElement> & MotionProps;
+const MotionH1 = forwardRef<HTMLHeadingElement, MotionH1Props>((props, ref) => (
+  <motion.h1 ref={ref} {...props} />
+));
+MotionH1.displayName = 'MotionH1';
+
+type MotionPProps = HTMLAttributes<HTMLParagraphElement> & MotionProps;
+const MotionP = forwardRef<HTMLParagraphElement, MotionPProps>((props, ref) => (
+  <motion.p ref={ref} {...props} />
+));
+MotionP.displayName = 'MotionP';
+
+type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit" | "reset";
+};
+const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
+  <motion.button ref={ref} {...props} />
+));
+MotionButton.displayName = 'MotionButton';
 
 export default function Home() {
   // State voor audio bestand
@@ -289,31 +319,31 @@ export default function Home() {
       {/* Modern gradient header */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 backdrop-blur-xl z-0" />
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1 }}
           className="w-full py-12 relative z-10"
         >
           <div className="max-w-6xl mx-auto px-4 text-center">
-            <motion.h1
+            <MotionH1
               initial={{ y: -20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.2, duration: 0.8 }}
               className="text-5xl font-bold mb-3 text-neutral-800 tracking-tight"
             >
               Super Kees Online
-            </motion.h1>
-            <motion.p
+            </MotionH1>
+            <MotionP
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.8 }}
               className="text-lg text-neutral-600 max-w-2xl mx-auto"
             >
               Transformeer uw audio-opnames naar uitgebreide vergadernotities en bruikbare samenvattingen met AI
-            </motion.p>
+            </MotionP>
           </div>
-        </motion.div>
+        </MotionDiv>
       </div>
       
       {/* Main content */}
@@ -324,7 +354,7 @@ export default function Home() {
             <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-neutral-200 -translate-y-1/2 z-0" />
             
             {[1, 2, 3].map((step) => (
-              <motion.div
+              <MotionDiv
                 key={step}
                 className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${
                   currentStep >= step
@@ -338,12 +368,12 @@ export default function Home() {
               >
                 {currentStep > step ? (
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
+                    <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                 ) : (
                   step
                 )}
-              </motion.div>
+              </MotionDiv>
             ))}
           </div>
           
@@ -377,7 +407,7 @@ export default function Home() {
         {/* Settings panel */}
         <AnimatePresence>
           {isSettingsOpen && (
-            <motion.div
+            <MotionDiv
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
@@ -450,14 +480,14 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </MotionDiv>
           )}
         </AnimatePresence>
         
         {/* Step 1: Audio Input Section */}
         <AnimatePresence mode="wait">
           {currentStep === 1 && (
-            <motion.div
+            <MotionDiv
               key="step1"
               variants={cardVariants}
               initial="hidden"
@@ -497,7 +527,7 @@ export default function Home() {
               </div>
               
               <div className="mt-8 flex justify-center">
-                <motion.div
+                <MotionDiv
                   className="w-1/2 max-w-md"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -508,9 +538,9 @@ export default function Home() {
                       <strong>Tip:</strong> Voor de beste resultaten, gebruik heldere audio met minimale achtergrondruis.
                     </p>
                   </div>
-                </motion.div>
+                </MotionDiv>
               </div>
-            </motion.div>
+            </MotionDiv>
           )}
         </AnimatePresence>
         
@@ -518,7 +548,7 @@ export default function Home() {
         <div id="transcribe-section" className="scroll-mt-24">
           <AnimatePresence>
             {currentStep >= 2 && (
-              <motion.div
+              <MotionDiv
                 key="step2"
                 variants={cardVariants}
                 initial="hidden"
@@ -592,7 +622,7 @@ export default function Home() {
                 </div>
                 
                 <TranscriptionDisplay text={transcription} isLoading={isTranscribing} />
-              </motion.div>
+              </MotionDiv>
             )}
           </AnimatePresence>
         </div>
@@ -601,7 +631,7 @@ export default function Home() {
         <div id="summary-section" className="scroll-mt-24">
           <AnimatePresence>
             {currentStep >= 3 && transcription && (
-              <motion.div
+              <MotionDiv
                 key="step3"
                 variants={cardVariants}
                 initial="hidden"
@@ -613,7 +643,7 @@ export default function Home() {
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center">
                       <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
                         </svg>
                       </div>
@@ -669,7 +699,7 @@ export default function Home() {
                     onOpenEmailModal={handleOpenEmailModal}
                   />
                 )}
-              </motion.div>
+              </MotionDiv>
             )}
           </AnimatePresence>
         </div>
