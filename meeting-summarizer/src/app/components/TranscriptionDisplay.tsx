@@ -13,6 +13,7 @@ MotionDiv.displayName = 'MotionDiv';
 
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
   onClick?: () => void;
+  type?: "button" | "submit" | "reset"; // Added type property
 };
 const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
   <motion.button ref={ref} {...props} />
