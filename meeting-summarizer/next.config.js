@@ -13,7 +13,9 @@ const nextConfig = {
       tls: false,
     };
     return config;
-  }
+  },
+  // Ensure CSS processing is enabled
+  reactStrictMode: true
 };
 
 module.exports = nextConfig;
