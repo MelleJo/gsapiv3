@@ -2,10 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes } from 'react';
+import React, { HTMLAttributes, forwardRef } from 'react';
 
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = (props: MotionDivProps) => <motion.div {...props} />;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
 
 interface CustomAudioRecorderProps {
   onAudioRecorded: (file: File) => void;
@@ -99,7 +102,7 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
       <h2 className="text-xl font-semibold text-gray-800">Vergadering Opnemen</h2>
       
       <div className="relative">
-<MotionDiv
+        <MotionDiv
           animate={isRecording ? {
             scale: [1, 1.1, 1],
             opacity: [1, 0.8, 1],

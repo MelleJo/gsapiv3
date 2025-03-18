@@ -1,6 +1,14 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import React, { forwardRef, HTMLAttributes } from 'react';
+import { motion, MotionProps } from 'framer-motion';
+
+// Create properly typed motion components
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
 
 export default function Header() {
   return (
@@ -10,7 +18,7 @@ export default function Header() {
       
       {/* Animated background shapes */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <MotionDiv 
           className="absolute w-64 h-64 rounded-full bg-blue-500/10"
           initial={{ x: -100, y: -100 }}
           animate={{ 
@@ -23,7 +31,7 @@ export default function Header() {
             repeatType: "reverse" 
           }}
         />
-        <motion.div 
+        <MotionDiv 
           className="absolute right-0 top-1/3 w-96 h-96 rounded-full bg-purple-500/10"
           initial={{ x: 100, y: 50 }}
           animate={{ 
@@ -41,7 +49,7 @@ export default function Header() {
       {/* Content */}
       <div className="relative z-10 w-full py-12">
         <div className="max-w-5xl mx-auto px-4 text-center">
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -49,9 +57,9 @@ export default function Header() {
             <h1 className="text-5xl font-bold mb-3 text-gradient">
               Vergadering Samenvatting
             </h1>
-          </motion.div>
+          </MotionDiv>
           
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -60,7 +68,7 @@ export default function Header() {
               Transformeer uw audio-opnames in uitgebreide vergadernotities 
               en bruikbare samenvattingen met AI
             </p>
-          </motion.div>
+          </MotionDiv>
         </div>
       </div>
     </header>

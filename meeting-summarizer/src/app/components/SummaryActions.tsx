@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes, forwardRef } from 'react';
+
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
 
 interface SummaryActionsProps {
   summary: string;
@@ -187,14 +194,14 @@ export default function SummaryActions({
         
         <AnimatePresence>
           {error && (
-            <motion.div
+            <MotionDiv
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg"
             >
               {error}
-            </motion.div>
+            </MotionDiv>
           )}
         </AnimatePresence>
         

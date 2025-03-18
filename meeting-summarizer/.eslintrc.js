@@ -1,5 +1,5 @@
 module.exports = {
-    extends: ["next/core-web-vitals", "next/typescript"],
+    extends: ["next", "next/typescript"],
     rules: {
       // TypeScript regels uitzetten die de build blokkeren
       "@typescript-eslint/no-explicit-any": "off",

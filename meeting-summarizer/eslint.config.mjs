@@ -19,6 +19,9 @@ const eslintConfig = [
       "react-hooks/exhaustive-deps": "warn", // Verander van error naar warn
       "react/no-unescaped-entities": "off", // Tijdelijk uitzetten
     },
+    linterOptions: {
+      ignorePatterns: ["node_modules/**/*", ".next/**/*"],
+    },
   },
 ];
 

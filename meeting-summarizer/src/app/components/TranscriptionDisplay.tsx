@@ -2,7 +2,22 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes, forwardRef } from 'react';
+
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
+
+type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
+  onClick?: () => void;
+};
+const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
+  <motion.button ref={ref} {...props} />
+));
+MotionButton.displayName = 'MotionButton';
 
 interface TranscriptionDisplayProps {
   text: string;
@@ -50,7 +65,7 @@ export default function TranscriptionDisplay({ text, isLoading }: TranscriptionD
   };
 
   return (
-    <motion.div 
+    <MotionDiv 
       variants={containerVariants}
       initial="hidden"
       animate="visible"
@@ -58,7 +73,7 @@ export default function TranscriptionDisplay({ text, isLoading }: TranscriptionD
     >
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold text-gray-800">Transcriptie</h2>
-        <motion.button 
+        <MotionButton 
           variants={buttonVariants}
           whileHover="hover"
           whileTap="tap"
@@ -95,7 +110,7 @@ export default function TranscriptionDisplay({ text, isLoading }: TranscriptionD
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
           )}
-        </motion.button>
+        </MotionButton>
       </div>
       
       <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
@@ -122,6 +137,6 @@ export default function TranscriptionDisplay({ text, isLoading }: TranscriptionD
           background: #9ca3af;
         }
       `}</style>
-    </motion.div>
+    </MotionDiv>
   );
 }
