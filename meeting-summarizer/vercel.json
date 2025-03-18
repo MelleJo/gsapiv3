@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/upload-blob/route.ts": {
-      "maxDuration": 60
+    "src/app/api/upload-blob/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [
