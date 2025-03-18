@@ -1,8 +1,6 @@
 // src/app/layout.tsx
 import { Inter } from 'next/font/google';
 import './globals.css';
-import './tailwind.css';
-import './output.css'; // Import the generated Tailwind CSS
 import type { Metadata } from 'next';
 
 const inter = Inter({ 

@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* stylelint-disable at-rule-no-unknown */
 /* Rest of your CSS */
 /* Modern design system */
