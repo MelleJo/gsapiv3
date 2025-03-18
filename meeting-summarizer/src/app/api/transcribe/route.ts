@@ -5,11 +5,33 @@ import { Readable } from 'stream';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 
 export const config = {
-  runtime: 'nodejs'
+  runtime: 'nodejs',
+  maxDuration: 600 // 10 minutes max execution time
+};
+
+// Configure timeout for fetch operations
+const FETCH_TIMEOUT = 120000; // 2 minutes
+
+// Add a timeout wrapper for any promise
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+  let timeoutHandle: NodeJS.Timeout;
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(errorMessage || `Operation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([
+    promise,
+    timeoutPromise
+  ]).finally(() => {
+    clearTimeout(timeoutHandle);
+  }) as Promise<T>;
 };
 
 // Helper function to add retry logic
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000, timeoutMs = FETCH_TIMEOUT): Promise<T> {
   let lastError: any;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -110,21 +132,55 @@ export async function POST(request: Request) {
         const mimeType = mimeTypes[fileExt as keyof typeof mimeTypes] || 'application/octet-stream';
 
         if (typeof blobUrl === "string") {
-          const resp = await fetch(blobUrl);
-          const arrayBuffer = await resp.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          fileToUpload = new File([buffer], originalFileName, { type: mimeType, lastModified: Date.now() });
+          // Add timeout to fetch operation
+          const fetchWithTimeout = () => withTimeout(
+            fetch(blobUrl), 
+            FETCH_TIMEOUT, 
+            'Tijdslimiet overschreden bij ophalen van audiobestand. Probeer het opnieuw.'
+          );
+          
+          const resp = await fetchWithTimeout();
+          if (!resp.ok) {
+            throw new Error(`Fout bij ophalen van audiobestand: ${resp.status} ${resp.statusText}`);
+          }
+          
+          // Get the blob directly instead of working with arrayBuffer
+          const blob = await resp.blob();
+          const chunks = [];
+          const reader = blob.stream().getReader();
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+          }
+          
+          // Convert to File directly from the blob
+          fileToUpload = new File([blob], originalFileName, { 
+            type: mimeType, 
+            lastModified: Date.now() 
+          });
         } else {
-          const arrayBuffer = await blobUrl.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          fileToUpload = new File([buffer], originalFileName, { type: mimeType, lastModified: Date.now() });
+          // When we already have a blob, use it directly
+          fileToUpload = new File([blobUrl], originalFileName, { 
+            type: mimeType, 
+            lastModified: Date.now() 
+          });
         }
-        return await openai.audio.transcriptions.create({
-          file: fileToUpload as any,
-          model: modelId,
-          language: 'nl',
-          response_format: 'text',
-        });
+        
+        console.log(`Transcriptie aanvraag verzenden naar OpenAI API voor bestand: ${originalFileName}`);
+        
+        // Add timeout to OpenAI API call - longer timeout for transcription
+        return await withTimeout(
+          openai.audio.transcriptions.create({
+            file: fileToUpload as any,
+            model: modelId,
+            language: 'nl',
+            response_format: 'text',
+          }),
+          300000, // 5 minute timeout for OpenAI API call
+          'Tijdslimiet overschreden bij het transcriberen. De OpenAI API heeft mogelijk meer tijd nodig voor dit bestand.'
+        );
       }, 3, 2000);
 
       return NextResponse.json({ 
