@@ -77,12 +77,26 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         body: formData,
       });
       
+      // First check if the response is OK before attempting to parse JSON
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload mislukt');
+        // Try to parse as JSON, but handle the case where it's not valid JSON
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Upload mislukt');
+        } catch (jsonError) {
+          // If JSON parsing fails, use the status text or a generic message
+          throw new Error(`Upload mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+        }
       }
       
-      const data = await response.json();
+      // Now parse the response as JSON, with error handling
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+      }
       
       if (data.error) {
         throw new Error(data.error);

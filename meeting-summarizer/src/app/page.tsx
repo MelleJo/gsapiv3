@@ -118,12 +118,25 @@ export default function Home() {
         })
       });
       
+      // First check if the response is OK before attempting to parse JSON
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Transcriptie mislukt');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Transcriptie mislukt');
+        } catch (jsonError) {
+          // If JSON parsing fails, use the status text or a generic message
+          throw new Error(`Transcriptie mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+        }
       }
       
-      const data = await response.json();
+      // Now parse the response as JSON, with error handling
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+      }
       
       if (data.error) {
         throw new Error(data.error);
@@ -162,12 +175,25 @@ export default function Home() {
         body: formData,
       });
       
+      // First check if the response is OK before attempting to parse JSON
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload van opname mislukt');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Upload van opname mislukt');
+        } catch (jsonError) {
+          // If JSON parsing fails, use the status text or a generic message
+          throw new Error(`Upload van opname mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+        }
       }
       
-      const data = await response.json();
+      // Now parse the response as JSON, with error handling
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+      }
       
       if (data.error) {
         throw new Error(data.error);
@@ -210,12 +236,25 @@ export default function Home() {
         })
       });
       
+      // First check if the response is OK before attempting to parse JSON
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Onbekende fout tijdens het samenvatten');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Onbekende fout tijdens het samenvatten');
+        } catch (jsonError) {
+          // If JSON parsing fails, use the status text or a generic message
+          throw new Error(`Samenvatting mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+        }
       }
       
-      const data = await response.json();
+      // Now parse the response as JSON, with error handling
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+      }
       
       if (data.error) {
         throw new Error(data.error);
