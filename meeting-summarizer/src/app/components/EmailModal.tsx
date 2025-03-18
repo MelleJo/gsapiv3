@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes } from 'react';
+import React, { HTMLAttributes, forwardRef } from 'react';
 
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = (props: MotionDivProps) => <motion.div {...props} />;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
 
 interface EmailModalProps {
   isOpen: boolean;
