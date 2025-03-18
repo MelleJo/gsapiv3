@@ -1,9 +1,20 @@
 'use client';
 
 // Use proper import syntax
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, forwardRef, HTMLAttributes } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionProps } from 'framer-motion';
+
+// Define motion button component with proper typing
+type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
+  disabled?: boolean;
+  onClick?: () => void;
+};
+
+const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
+  <motion.button ref={ref} {...props} />
+));
+MotionButton.displayName = 'MotionButton';
 
 // Define the BlobFile interface inline to prevent import errors
 interface BlobFile {
@@ -223,7 +234,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         />
       </div>
       
-      <motion.button
+      <MotionButton
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={handleUpload}
@@ -261,7 +272,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
             Bestand uploaden
           </>
         )}
-      </motion.button>
+      </MotionButton>
     </div>
   );
 }
