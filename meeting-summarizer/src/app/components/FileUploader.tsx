@@ -4,6 +4,7 @@
 import React, { useRef, useState, forwardRef, HTMLAttributes } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { motion, MotionProps } from 'framer-motion';
+import { upload } from '@vercel/blob/client';
 
 // Define motion button component with proper typing
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
@@ -35,6 +36,12 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   const [error, setError] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isClientUpload, setIsClientUpload] = useState<boolean>(false);
+  
+  // Define the threshold for server vs client uploads
+  // Files larger than this will use client uploads
+  const SERVER_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4MB (safely under Vercel's 4.5MB limit)
 
   // Handle file selection change and automatically upload
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -74,57 +81,104 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     try {
       setUploading(true);
       setError('');
+      setUploadProgress(0);
       
-      // Create FormData to send file
-      const formData = new FormData();
-      formData.append('file', file);
+      let blobData: BlobFile;
       
-      const response = await fetch('/api/upload-blob', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      // First check if the response is OK before attempting to parse JSON
-      if (!response.ok) {
-        // Try to parse as JSON, but handle the case where it's not valid JSON
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Upload mislukt');
-        } catch (jsonError) {
-          // If JSON parsing fails, use the status text or a generic message
-          throw new Error(`Upload mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+      // Determine upload method based on file size
+      if (file.size <= SERVER_UPLOAD_LIMIT) {
+        // Small file: Use server upload (faster, simpler)
+        setIsClientUpload(false);
+        
+        // Create FormData to send file
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/api/upload-blob', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        // First check if the response is OK before attempting to parse JSON
+        if (!response.ok) {
+          // Try to parse as JSON, but handle the case where it's not valid JSON
+          try {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Upload mislukt');
+          } catch (jsonError) {
+            // If JSON parsing fails, use the status text or a generic message
+            throw new Error(`Upload mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+          }
         }
-      }
-      
-      // Now parse the response as JSON, with error handling
-      let data;
-      try {
-        data = await response.json();
-      } catch (jsonError) {
-        console.error('JSON parsing error:', jsonError);
-        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
-      }
-      
-      if (data.error) {
-        throw new Error(data.error);
+        
+        // Now parse the response as JSON, with error handling
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('JSON parsing error:', jsonError);
+          throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+        }
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        blobData = data.blob;
+      } else {
+        // Large file: Use client upload (supports files > 4.5MB)
+        setIsClientUpload(true);
+        
+        // Direct browser-to-blob upload
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/client-upload',
+          onUploadProgress: (progress) => {
+            // Update UI with upload progress
+            setUploadProgress(progress.percentage);
+          },
+        });
+        
+        // Create a compatible BlobFile object from the result
+        blobData = {
+          url: blob.url,
+          pathname: blob.pathname,
+          size: file.size,
+          contentType: file.type,
+          originalName: file.name
+        };
       }
       
       // Call the callback with the blob data
       if (onFileUploaded) {
-        onFileUploaded(data.blob);
+        onFileUploaded(blobData);
       }
       
-      // Reset filename after successful upload
+      // Reset state after successful upload
       setFileName('');
+      setIsClientUpload(false);
       if (inputFileRef.current) {
         inputFileRef.current.value = '';
       }
       
     } catch (err) {
       console.error('Upload fout:', err);
-      setError(err instanceof Error ? err.message : 'Upload mislukt');
+      
+      // Provide more detailed error messages
+      if (err instanceof Error) {
+        if (err.message.includes('413')) {
+          setError('Bestand is te groot voor directe upload. Verwerk de 413 fout intern.');
+        } else if (err.message.includes('network') || err.message.includes('connection')) {
+          setError('Netwerkfout tijdens uploaden. Controleer je verbinding en probeer opnieuw.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Upload mislukt');
+      }
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -260,45 +314,61 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         />
       </div>
       
-      <MotionButton
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={handleUpload}
-        disabled={!fileName || uploading}
-        className={`mt-4 px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all ${
-          !fileName || uploading
-            ? 'bg-neutral-300 cursor-not-allowed'
-            : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-md'
-        }`}
-      >
-        {uploading ? (
-          <>
-            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Uploaden...
-          </>
-        ) : (
-          <>
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              className="h-4 w-4 mr-2" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            Bestand uploaden
-          </>
+      <div className="w-full">
+        {uploading && isClientUpload && (
+          <div className="mt-4 w-full">
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-600 rounded-full transition-all duration-300" 
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+            </div>
+            <p className="text-xs text-center mt-1 text-neutral-500">
+              {uploadProgress.toFixed(0)}% verwerkt
+            </p>
+          </div>
         )}
-      </MotionButton>
+        
+        <MotionButton
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleUpload}
+          disabled={!fileName || uploading}
+          className={`mt-4 px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all w-full justify-center ${
+            !fileName || uploading
+              ? 'bg-neutral-300 cursor-not-allowed'
+              : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-md'
+          }`}
+        >
+          {uploading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {isClientUpload ? 'Direct uploaden naar Vercel Blob...' : 'Uploaden...'}
+            </>
+          ) : (
+            <>
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-4 w-4 mr-2" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Bestand uploaden
+            </>
+          )}
+        </MotionButton>
+      </div>
     </div>
   );
 }

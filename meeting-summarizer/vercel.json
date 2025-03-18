@@ -2,6 +2,9 @@
   "functions": {
     "src/app/api/upload-blob/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/client-upload/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [
