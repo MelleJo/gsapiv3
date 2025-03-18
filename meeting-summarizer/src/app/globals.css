@@ -1,7 +1,4 @@
 /* stylelint-disable at-rule-no-unknown */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 /* Rest of your CSS */
 /* Modern design system */
 :root {
