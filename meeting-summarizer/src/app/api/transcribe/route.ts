@@ -6,7 +6,7 @@ import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCo
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 600 // 10 minutes max execution time
+  maxDuration: 300 // 10 minutes max execution time
 };
 
 // Configure timeout for fetch operations

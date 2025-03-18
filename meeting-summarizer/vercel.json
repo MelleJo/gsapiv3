@@ -7,7 +7,7 @@
       "maxDuration": 300
     },
     "src/app/api/transcribe/route.ts": {
-      "maxDuration": 600
+      "maxDuration": 300
     }
   },
   "headers": [
