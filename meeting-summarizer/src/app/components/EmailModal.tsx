@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes } from 'react';
+
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = (props: MotionDivProps) => <motion.div {...props} />;
 
 interface EmailModalProps {
   isOpen: boolean;
@@ -228,7 +232,7 @@ ${senderName || 'Super Kees Online'}`;
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-60 flex items-center justify-center p-4">
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -255,14 +259,14 @@ ${senderName || 'Super Kees Online'}`;
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-130px)]">
             <AnimatePresence>
               {error && (
-                <motion.div
+                <MotionDiv
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg"
                 >
                   {error}
-                </motion.div>
+                </MotionDiv>
               )}
             </AnimatePresence>
             
@@ -488,7 +492,7 @@ ${senderName || 'Super Kees Online'}`;
               </button>
             </div>
           </div>
-        </motion.div>
+        </MotionDiv>
       </div>
     </AnimatePresence>
   );
