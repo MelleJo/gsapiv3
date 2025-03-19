@@ -23,6 +23,27 @@ function updateWavHeader(header: Uint8Array, dataLength: number): Uint8Array {
 }
 
 /**
+ * Checks if a blob is a WAV file by examining its MIME type or name
+ */
+function isWavFile(blob: Blob): boolean {
+  const wavTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'];
+  return wavTypes.includes(blob.type.toLowerCase()) || 
+         (blob as any).name?.toLowerCase().endsWith('.wav');
+}
+
+/**
+ * Checks if a blob is likely a complex format like M4A/MP4 that can't be easily chunked
+ */
+function isComplexFormat(blob: Blob): boolean {
+  const complexTypes = [
+    'audio/mp4', 'audio/x-m4a', 'audio/aac', 'video/mp4', 
+    'application/mp4', 'audio/m4a'
+  ];
+  return complexTypes.includes(blob.type.toLowerCase()) || 
+         (blob as any).name?.toLowerCase().match(/\.(m4a|mp4|aac)$/i);
+}
+
+/**
  * Split an audio file into smaller chunks based on size constraints.
  * For WAV files, the header (first 44 bytes) is updated for each chunk to reflect 
  * the correct data length.
@@ -41,14 +62,8 @@ export async function splitAudioBlob(blob: Blob, sizeLimit = SIZE_LIMIT): Promis
     return [blob];
   }
 
-  // Check if the blob is a WAV file by inspecting its MIME type or name pattern
-  const isWav = blob.type.toLowerCase().includes('wav') || 
-                blob.type.toLowerCase().includes('wave') ||
-                (blob as any).name?.toLowerCase().endsWith('.wav');
-  
-  console.log(`Detected audio format: ${isWav ? 'WAV' : 'non-WAV'} (${blob.type})`);
-  
-  if (isWav) {
+  // Special handling for WAV files
+  if (isWavFile(blob)) {
     console.log('Using WAV-specific chunking method with header preservation');
     try {
       const headerSize = 44; // Standard WAV header size
@@ -95,6 +110,13 @@ export async function splitAudioBlob(blob: Blob, sizeLimit = SIZE_LIMIT): Promis
       console.log('Falling back to binary chunking method');
       // Fall back to binary chunking if WAV processing fails
     }
+  }
+  
+  // For complex formats, warn that chunking might not work correctly
+  if (isComplexFormat(blob)) {
+    console.warn('Warning: Attempting to chunk a complex audio format (like M4A/MP4).');
+    console.warn('These formats contain important metadata that may be lost during chunking.');
+    console.warn('This might result in unplayable or untranscribable chunks.');
   }
   
   // For non-WAV formats or if WAV processing failed, use binary chunking
