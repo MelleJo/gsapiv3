@@ -51,22 +51,59 @@ Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die 
     const combinedText = instructions + userInput;
     const inputTokenCount = countTokens(combinedText);
 
-    // Handle very large input
-    if (inputTokenCount > 15000) {
-      console.log(`Large input detected: ${inputTokenCount} tokens.`);
+    let summary = '';
+    let outputTokenCount = 0;
+
+    // Handle o3-mini's special format
+    if (model === 'o3-mini') {
+      const response = await openai.responses.create({
+        model: "o3-mini",
+        input: [{
+          role: "user",
+          content: userInput
+        }],
+        instructions,
+        temperature,
+        text: {
+          format: {
+            type: "text"
+          }
+        },
+        reasoning: {
+          effort: "medium"
+        },
+        tools: [],
+        store: true
+      });
+
+      summary = response.output_text || '';
+    } 
+    // Standard response API format for other models
+    else if (model.startsWith('gpt-')) {
+      const response = await openai.responses.create({
+        model,
+        instructions,
+        input: userInput,
+        temperature
+      });
+
+      summary = response.output_text || '';
+    }
+    // Fallback to chat completion API for any other models
+    else {
+      const response = await openai.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: instructions },
+          { role: 'user', content: userInput }
+        ],
+        temperature
+      });
+
+      summary = response.choices[0].message.content || '';
     }
 
-    // Using the Responses API instead of Chat Completions
-    const response = await openai.responses.create({
-      model: model,
-      instructions: instructions,
-      input: userInput,
-      temperature: temperature,
-    });
-
-    // Extract summary from response
-    const summary = response.output_text || '';
-    const outputTokenCount = countTokens(summary);
+    outputTokenCount = countTokens(summary);
 
     // Calculate costs
     const cost = calculateTextCost(
@@ -94,6 +131,7 @@ Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die 
     let statusCode = 500;
     
     if (error instanceof Error) {
+      console.error('Full error:', error);
       errorMessage = error.message;
       
       // Check for specific error types
