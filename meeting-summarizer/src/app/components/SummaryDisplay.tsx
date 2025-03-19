@@ -27,9 +27,10 @@ interface SummaryDisplayProps {
 
 // Define types for sections
 type Section = {
-  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list';
+  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list' | 'dash-separator';
   content: string;
   items?: string[];
+  level?: number;
   number?: string;
   title?: string;
 };
@@ -54,62 +55,95 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     const blocks = text.split(/\n\n+/);
     
     for (const block of blocks) {
-      // Check if this is a bullet list
-      if (block.match(/^[-*]\s+/m) || block.match(/^\d+\.\s+/m)) {
-        // This is a list - split into items
-        const items: string[] = [];
-        const listLines = block.split('\n');
-        let currentItem = '';
+      // Check if this is a bullet list or contains bullets
+      if (block.match(/^[•*-]\s+/m) || block.match(/^\d+\.\s+/m)) {
+        // This is a list - process line by line to capture all formatting details
+        const listItems: string[] = [];
+        let currentSection = '';
+        const lines = block.split('\n');
         
-        for (let i = 0; i < listLines.length; i++) {
-          const line = listLines[i];
-          // If this line starts with a bullet or number, it's a new item
-          if (line.match(/^[-*]\s+/) || line.match(/^\d+\.\s+/)) {
-            if (currentItem) {
-              items.push(currentItem);
-              currentItem = '';
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          
+          // Check if this line is a bullet point
+          if (line.match(/^[•*-]\s+/) || line.match(/^\d+\.\s+/)) {
+            // If we already have accumulated text, add it as a paragraph
+            if (currentSection.trim()) {
+              sections.push({
+                type: 'paragraph',
+                content: currentSection.trim()
+              });
+              currentSection = '';
             }
-            currentItem = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
-          } else if (line.trim() && currentItem) {
-            // This is a continuation of the current item
-            currentItem += ' ' + line.trim();
+            
+            // Parse the bullet and its content
+            listItems.push(line);
+          } 
+          // Check if this line has a dash/em-dash separator (common in the example)
+          else if (line.match(/\s+—+\s+/) || line.match(/\s+–+\s+/) || line.match(/\s+-+\s+/)) {
+            sections.push({
+              type: 'dash-separator',
+              content: line
+            });
+          }
+          // Regular line - either add to current paragraph or start a new one
+          else {
+            if (i > 0 && lines[i-1].match(/^[•*-]\s+/) || lines[i-1].match(/^\d+\.\s+/)) {
+              // This line is part of the previous bullet point
+              listItems[listItems.length - 1] += ' ' + line;
+            } else {
+              // Regular paragraph text
+              currentSection += (currentSection ? ' ' : '') + line;
+            }
           }
         }
         
-        // Add the last item if there is one
-        if (currentItem) {
-          items.push(currentItem);
+        // Add any remaining text as a paragraph
+        if (currentSection.trim()) {
+          sections.push({
+            type: 'paragraph',
+            content: currentSection.trim()
+          });
         }
         
-        if (items.length > 0) {
+        // Add the bullet list if we have items
+        if (listItems.length > 0) {
           sections.push({
             type: 'bullet-list',
             content: block,
-            items: items
+            items: listItems
           });
-          continue;
         }
-      }
-      
-      // Check if this is a section header with asterisks - without using /s flag
-      const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)([^]*?)$/);
-      
-      if (sectionMatch) {
-        const [, number, , title, content] = sectionMatch;
+      } 
+      // Check if this is a section header with asterisks
+      else if (block.match(/^(\d+\.\s+)?([A-Z][^.]+):/)) {
+        const sectionMatch = block.match(/^(\d+\.\s+)?([A-Z][^:]+):(.*)$/s);
         
-        sections.push({
-          type: 'section',
-          number: number || '',
-          title: title || '', // Ensure title is never undefined
-          content: content.trim()
-        });
-      } else if (block.includes('**')) {
+        if (sectionMatch) {
+          const [, number, title, content] = sectionMatch;
+          
+          sections.push({
+            type: 'section',
+            number: number || '',
+            title: title.trim() || '',
+            content: content.trim()
+          });
+        } else {
+          // Regular paragraph
+          sections.push({
+            type: 'paragraph',
+            content: block
+          });
+        }
+      } 
+      else if (block.includes('**')) {
         // This paragraph has some bold formatting but isn't a section header
         sections.push({
           type: 'formatted',
           content: block
         });
-      } else {
+      } 
+      else {
         // Regular paragraph
         sections.push({
           type: 'paragraph',
@@ -131,6 +165,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       // Italic text
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      // Em dashes and separators with proper spacing
+      .replace(/\s+(—+|–+|-+)\s+/g, ' <span class="text-gray-500 mx-2">$1</span> ')
       // Headers that use markdown-style formatting (#)
       .replace(/^(#{1,6})\s+(.+)$/gm, (_, level, text) => {
         const headerLevel = level.length;
@@ -138,6 +174,22 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       });
     
     return formatted;
+  };
+
+  // Process bullet point to ensure proper display
+  const processBulletPoint = (bulletText: string) => {
+    // Replace the bullet character with a properly styled one
+    if (bulletText.startsWith('•')) {
+      return bulletText.replace(/^•\s+/, '');
+    } else if (bulletText.startsWith('-')) {
+      return bulletText.replace(/^-\s+/, '');
+    } else if (bulletText.startsWith('*')) {
+      return bulletText.replace(/^\*\s+/, '');
+    } else if (bulletText.match(/^\d+\.\s+/)) {
+      // For numbered bullets, preserve the number but style it
+      return bulletText.replace(/^(\d+\.)\s+/, '<span class="font-semibold mr-2">$1</span> ');
+    }
+    return bulletText;
   };
 
   if (isLoading) {
@@ -229,7 +281,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
               <div key={index} className="mb-6">
                 <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100">
                   {section.number && <span className="mr-1">{section.number}</span>}
-                  {section.title ? section.title.replace(/\*\*/g, '') : ''}
+                  {section.title || ''}
                 </h3>
                 <div className="text-gray-700 leading-relaxed pl-1">
                   {section.content}
@@ -238,13 +290,43 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             );
           } else if (section.type === 'bullet-list') {
             return (
-              <div key={index} className="mb-4 pl-2">
-                <ul className="list-disc space-y-2 pl-5">
-                  {section.items?.map((item, itemIndex) => (
-                    <li key={itemIndex} className="pl-1">{item}</li>
-                  ))}
+              <div key={index} className="mb-4 ml-1">
+                <ul className="space-y-3">
+                  {section.items?.map((item, itemIndex) => {
+                    const bulletSymbol = item.startsWith('•') ? '•' : 
+                                        item.startsWith('-') ? '–' : 
+                                        item.startsWith('*') ? '•' : '';
+                    
+                    return (
+                      <li key={itemIndex} className="flex">
+                        {bulletSymbol && (
+                          <span className="inline-block w-5 flex-shrink-0 text-blue-600 font-bold">{bulletSymbol}</span>
+                        )}
+                        <span 
+                          className="flex-grow"
+                          dangerouslySetInnerHTML={{ 
+                            __html: processBulletPoint(item) 
+                          }}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
+            );
+          } else if (section.type === 'dash-separator') {
+            // Better render dashes and separators
+            return (
+              <div 
+                key={index} 
+                className="my-2 text-gray-700 flex items-center"
+                dangerouslySetInnerHTML={{ 
+                  __html: section.content
+                    .replace(/\s+—+\s+/g, ' <span class="px-3 text-gray-400">—</span> ')
+                    .replace(/\s+–+\s+/g, ' <span class="px-3 text-gray-400">–</span> ')
+                    .replace(/\s+-+\s+/g, ' <span class="px-3 text-gray-400">-</span> ')
+                }}
+              />
             );
           } else if (section.type === 'formatted') {
             return (
