@@ -32,10 +32,10 @@ export default function RootLayout({
         <meta httpEquiv="Cross-Origin-Opener-Policy" content="same-origin" />
         <meta httpEquiv="Cross-Origin-Embedder-Policy" content="require-corp" />
         
-        {/* Updated Content Security Policy that allows Next.js to function */}
+        {/* Updated Content Security Policy that allows blob URLs for scripts */}
         <meta 
           httpEquiv="Content-Security-Policy" 
-          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; worker-src blob:; connect-src 'self' blob: https://*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com blob:; worker-src blob:; connect-src 'self' blob: https://*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'"
         />
       </head>
       <body className="antialiased">
