@@ -5,6 +5,10 @@ import openai from '@/lib/openai';
 import { chatModels } from '@/lib/config';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 
+// Set a higher timeout for the API request
+export const maxDuration = 60; // 60 seconds
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     // Parse request body
@@ -13,7 +17,7 @@ export async function POST(request: Request) {
     // Extract parameters
     const { summary, transcript, action, topic, customPrompt } = body;
     
-    // Validate required inputs - don't check for audio URL
+    // Validate required inputs
     if (!summary) {
       return NextResponse.json(
         { error: 'Geen samenvatting aangeleverd voor verfijning' },
@@ -28,18 +32,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use GPT-4o-mini as default model for summary refinements
-    const model = 'gpt-4o-mini';
-    const selectedModel = chatModels.find(m => m.id === model) || chatModels.find(m => m.id === 'gpt-4o-mini') || chatModels[0];
+    // Use gpt-4o as specified
+    const model = 'gpt-4o';
+    const selectedModel = chatModels.find(m => m.id === model) || 
+                         chatModels.find(m => m.id === 'gpt-4o') || 
+                         chatModels[0];
 
-    // Create the system prompt based on the action
-    let systemPrompt = '';
+    // Create instructions based on the action
+    let instructions = '';
     
     switch (action) {
       case 'make-detailed':
-        systemPrompt = `Je bent een expert in het schrijven van uitgebreide vergadersamenvattingen. Ik geef je een bestaande samenvatting en de ruwe transcriptie van een vergadering. Maak de samenvatting gedetailleerder door relevante informatie uit de transcriptie toe te voegen die in de huidige samenvatting ontbreekt.
+        instructions = `Je bent een expert in het schrijven van uitgebreide vergadersamenvattingen. Maak de samenvatting gedetailleerder door relevante informatie uit de transcriptie toe te voegen die in de huidige samenvatting ontbreekt.
 
-Behoud de structuur van de originele samenvatting maar voeg meer details, voorbeelden, en feitelijke informatie toe. Hou de schrijfstijl consistent. Als er in de transcriptie belangrijke discussiepunten, beslissingen, of actiepunten staan die in de samenvatting missen, voeg deze dan toe.`;
+Behoud de structuur van de originele samenvatting maar voeg meer details toe. Hou de schrijfstijl consistent. Zorg ervoor dat je de tekst formatteert in duidelijke paragrafen zonder markdown symbolen zichtbaar in de output.`;
         break;
         
       case 'elaborate-topic':
@@ -49,15 +55,11 @@ Behoud de structuur van de originele samenvatting maar voeg meer details, voorbe
             { status: 400 }
           );
         }
-        systemPrompt = `Je bent een expert in het schrijven van gerichte vergadersamenvattingen. Ik geef je een bestaande samenvatting en de ruwe transcriptie van een vergadering, plus een specifiek onderwerp waarover ik meer details wil. Breid de samenvatting uit met alle relevante informatie uit de transcriptie over dit specifieke onderwerp: "${topic}".
-
-Voeg details, context, discussiepunten, en besluiten toe die gerelateerd zijn aan dit onderwerp en die in de transcriptie voorkomen. Als het onderwerp niet of nauwelijks in de transcriptie voorkomt, geef dan aan dat er weinig informatie over beschikbaar is. Behoud de algehele structuur van de samenvatting maar verfijn het gedeelte over het gevraagde onderwerp.`;
+        instructions = `Je bent een expert in het schrijven van gerichte vergadersamenvattingen. Breid de samenvatting uit met alle relevante informatie over dit specifieke onderwerp: "${topic}". Zorg ervoor dat je de tekst formatteert in duidelijke paragrafen zonder markdown symbolen zichtbaar in de output.`;
         break;
         
       case 'email-format':
-        systemPrompt = `Je bent een communicatie-expert die vergadernotities herstructureert in e-mailformaat. Ik geef je een samenvatting van een vergadering en optioneel een transcriptie. Herschrijf deze in een formele, professionele e-mail die naar collega's gestuurd kan worden.
-
-De e-mail moet een duidelijke onderwerpregel bevatten (die je mag suggereren), een korte intro, een gestructureerde samenvatting van de belangrijkste punten, en een professionele afsluiting. Zorg voor een duidelijke structuur met kopjes of opsommingstekens voor de belangrijkste punten. De toon moet professioneel maar toegankelijk zijn.`;
+        instructions = `Herschrijf de vergadernotulen in een formele, professionele e-mail die naar collega's gestuurd kan worden met een duidelijke onderwerpregel, intro, gestructureerde samenvatting en afsluiting. Gebruik goed geformatteerde tekst zonder zichtbare markdown symbolen.`;
         break;
         
       case 'custom':
@@ -67,9 +69,7 @@ De e-mail moet een duidelijke onderwerpregel bevatten (die je mag suggereren), e
             { status: 400 }
           );
         }
-        systemPrompt = `Je bent een expert in het verfijnen van vergadersamenvattingen. Ik geef je een bestaande samenvatting, de ruwe transcriptie, en een specifieke instructie voor hoe je de samenvatting moet aanpassen. Volg deze instructie nauwkeurig: "${customPrompt}".
-
-Gebruik de transcriptie als bron van extra informatie maar focus op het uitvoeren van de gevraagde aanpassing. Behoud de professionaliteit en helderheid van de originele samenvatting, tenzij anders gevraagd in de instructie.`;
+        instructions = `Volg deze instructie voor het aanpassen van de samenvatting: "${customPrompt}". Zorg ervoor dat je de tekst formatteert in duidelijke paragrafen zonder markdown symbolen zichtbaar in de output.`;
         break;
         
       default:
@@ -79,24 +79,41 @@ Gebruik de transcriptie als bron van extra informatie maar focus op het uitvoere
         );
     }
 
-    // Create chat completion request
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Hier is de samenvatting:\n\n${summary}\n\n${transcript ? `Hier is de transcriptie:\n\n${transcript}` : ''}\n\n${topic ? `Focus op het onderwerp: ${topic}` : ''}${customPrompt ? `Specifieke instructie: ${customPrompt}` : ''}` }
-    ];
+    // Use the newer Responses API structure
+    const userMessage = {
+      role: "user",
+      content: `Hier is de samenvatting:\n\n${summary}${transcript ? `\n\nContext uit transcriptie:\n\n${transcript.substring(0, 4000)}` : ''}`
+    };
 
-    // Call OpenAI API
-    const response = await openai.chat.completions.create({
-      model: model,
-      messages: messages as any,
-      temperature: 0.3, // Use a moderate temperature for refinements
+    const devMessage = {
+      role: "developer",
+      content: instructions
+    };
+
+    // Set a timeout for the API call
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI API timeout')), 50000); // 50 second timeout
     });
+
+    // Call OpenAI API with newer responses format
+    const responsePromise = openai.chat.completions.create({
+      model: model,
+      messages: [
+        devMessage,
+        userMessage
+      ] as any,
+      temperature: 0.3,
+      max_tokens: 2048, // Increased token limit for more detailed responses
+    });
+
+    // Race between the API call and the timeout
+    const response = await Promise.race([responsePromise, timeoutPromise]) as any;
 
     // Get the refined summary
     const refinedSummary = response.choices[0].message.content || '';
 
     // Calculate costs
-    const inputTokens = countTokens(messages.map(m => m.content).join(' '));
+    const inputTokens = countTokens(userMessage.content + devMessage.content);
     const outputTokens = countTokens(refinedSummary);
     const cost = calculateTextCost(
       inputTokens,
@@ -119,12 +136,25 @@ Gebruik de transcriptie als bron van extra informatie maar focus op het uitvoere
   } catch (error) {
     console.error('Error refining summary:', error);
     
-    const errorMessage = error instanceof Error ? error.message : 'Onbekende fout bij het verfijnen van de samenvatting';
-    const statusCode = typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : 500;
+    let errorMessage = 'Onbekende fout bij het verfijnen van de samenvatting';
+    let statusCode = 500;
     
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: statusCode }
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      if (error.message.includes('timeout')) {
+        errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere samenvatting of probeer het later opnieuw.';
+        statusCode = 504;
+      }
+    }
+    
+    // Always return a valid JSON response even for errors
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { 
+        status: statusCode,
+        headers: { 'Content-Type': 'application/json' }
+      }
     );
   }
 }

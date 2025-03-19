@@ -13,7 +13,7 @@ MotionDiv.displayName = 'MotionDiv';
 
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
   onClick?: () => void;
-  type?: "button" | "submit" | "reset"; // Added type property
+  type?: "button" | "submit" | "reset";
 };
 const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
   <motion.button ref={ref} {...props} />
@@ -32,6 +32,84 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     navigator.clipboard.writeText(summary);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Process the summary text to properly render formatting
+  const processSummary = (text: string) => {
+    if (!text) return [];
+    
+    // Split text into sections or paragraphs
+    let sections = [];
+    
+    // Check if the summary has numbered sections (like "1. **Title:**")
+    const hasNumberedSections = /\d+\.\s+\*\*[^*]+\*\*/.test(text);
+    
+    // Check for special formatting patterns
+    const hasAsterisks = text.includes('**');
+    
+    if (hasNumberedSections || hasAsterisks) {
+      // Split by double line breaks first
+      const blocks = text.split(/\n\n+/);
+      
+      for (const block of blocks) {
+        // Check if this is a section header with asterisks
+        const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)(.*)$/s);
+        
+        if (sectionMatch) {
+          const [, number, , title, content] = sectionMatch;
+          
+          sections.push({
+            type: 'section',
+            number: number || '',
+            title: title,
+            content: content.trim()
+          });
+        } else if (block.includes('**')) {
+          // This paragraph has some bold formatting but isn't a section header
+          sections.push({
+            type: 'formatted',
+            content: block
+          });
+        } else {
+          // Regular paragraph
+          sections.push({
+            type: 'paragraph',
+            content: block
+          });
+        }
+      }
+    } else {
+      // Simple paragraph processing for plain text
+      const paragraphs = text.split(/\n\n+/);
+      
+      for (const para of paragraphs) {
+        sections.push({
+          type: 'paragraph',
+          content: para
+        });
+      }
+    }
+    
+    return sections;
+  };
+
+  // Render formatted text with proper HTML
+  const renderFormattedText = (text: string) => {
+    if (!text) return text;
+    
+    // Replace markdown-style formatting with HTML tags
+    const formatted = text
+      // Bold text
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      // Italic text
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      // Headers that use markdown-style formatting (#)
+      .replace(/^(#{1,6})\s+(.+)$/gm, (_, level, text) => {
+        const headerLevel = level.length;
+        return `<h${headerLevel} class="text-xl font-bold mb-2">${text}</h${headerLevel}>`;
+      });
+    
+    return formatted;
   };
 
   if (isLoading) {
@@ -55,9 +133,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     return null;
   }
 
-  // Format the summary to highlight sections using regex
-  const formattedSummary = formatSummaryWithSections(summary);
-
   const containerVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.4 } }
@@ -67,6 +142,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     hover: { scale: 1.05 },
     tap: { scale: 0.95 }
   };
+
+  const sections = processSummary(summary);
 
   return (
     <MotionDiv 
@@ -118,17 +195,30 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       </div>
       
       <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-        {/* Render the formatted summary sections */}
-        {formattedSummary.map((section, i) => {
-          if (section.type === 'header') {
+        {sections.map((section, index) => {
+          if (section.type === 'section') {
             return (
-              <h3 key={i} className="text-lg font-semibold text-blue-700 mt-4 mb-2 pb-1 border-b border-blue-200">
-                {section.content}
-              </h3>
+              <div key={index} className="mb-4">
+                <h3 className="text-lg font-semibold text-blue-700 mt-4 mb-2 pb-1 border-b border-blue-200">
+                  {section.number && <span className="mr-1">{section.number}</span>}
+                  {section.title.replace(/\*\*/g, '')}
+                </h3>
+                <p className="text-gray-700 leading-relaxed">
+                  {section.content}
+                </p>
+              </div>
+            );
+          } else if (section.type === 'formatted') {
+            return (
+              <div 
+                key={index} 
+                className="mb-4 text-gray-700 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: renderFormattedText(section.content) }}
+              />
             );
           } else {
             return (
-              <p key={i} className="mb-3 text-gray-700 leading-relaxed">
+              <p key={index} className="mb-4 text-gray-700 leading-relaxed">
                 {section.content}
               </p>
             );
@@ -151,56 +241,18 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #9ca3af;
         }
+        
+        /* Additional styling for enhanced summary rendering */
+        strong {
+          font-weight: 600;
+          color: #111827;
+        }
+        
+        em {
+          font-style: italic;
+          color: #374151;
+        }
       `}</style>
     </MotionDiv>
   );
-}
-
-// Helper function to format the summary with sections
-function formatSummaryWithSections(summary: string): { type: 'header' | 'paragraph', content: string }[] {
-  const result: { type: 'header' | 'paragraph', content: string }[] = [];
-  
-  // Common section titles in Dutch that we want to highlight
-  const sectionPatterns = [
-    /^(Overzicht|OVERZICHT):/i,
-    /^(Belangrijkste discussiepunten|BELANGRIJKSTE DISCUSSIEPUNTEN):/i,
-    /^(Genomen beslissingen|GENOMEN BESLISSINGEN|Beslissingen|BESLISSINGEN):/i,
-    /^(Actiepunten|ACTIEPUNTEN):/i,
-    /^(Vervolgstappen|VERVOLGSTAPPEN|Volgende stappen|VOLGENDE STAPPEN):/i,
-    /^(Deelnemers|DEELNEMERS):/i,
-    /^(Conclusie|CONCLUSIE):/i
-  ];
-  
-  const lines = summary.split('\n');
-  let currentParagraph = '';
-  
-  for (const line of lines) {
-    // Check if this line is a section header
-    const isHeader = sectionPatterns.some(pattern => pattern.test(line));
-    
-    if (isHeader) {
-      // If we had a paragraph in progress, add it first
-      if (currentParagraph.trim()) {
-        result.push({ type: 'paragraph', content: currentParagraph.trim() });
-        currentParagraph = '';
-      }
-      
-      // Add the header
-      result.push({ type: 'header', content: line });
-    } else if (line.trim()) {
-      // For non-empty lines, add to the current paragraph
-      currentParagraph += (currentParagraph ? '\n' : '') + line;
-    } else if (currentParagraph.trim()) {
-      // Empty line and we have a paragraph - finish it
-      result.push({ type: 'paragraph', content: currentParagraph.trim() });
-      currentParagraph = '';
-    }
-  }
-  
-  // Add the last paragraph if there's one
-  if (currentParagraph.trim()) {
-    result.push({ type: 'paragraph', content: currentParagraph.trim() });
-  }
-  
-  return result;
 }
