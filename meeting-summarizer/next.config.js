@@ -17,12 +17,32 @@ const nextConfig = {
   // Ensure CSS processing is enabled
   reactStrictMode: true,
   
-  // Increase API body size limits
-  api: {
-    bodyParser: {
-      sizeLimit: '100mb', // Increased from default 1mb
+  // Instead of using the 'api' property (which is causing errors),
+  // we'll use serverRuntimeConfig if needed for API configurations
+  serverRuntimeConfig: {
+    // Will only be available on the server side
+    bodyParserConfig: {
+      sizeLimit: '100mb',
     },
-    responseLimit: '100mb',
+  },
+  
+  // Add appropriate headers for FFMPEG WASM
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin',
+          },
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'require-corp',
+          },
+        ],
+      },
+    ];
   },
 };
 
