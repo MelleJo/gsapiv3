@@ -2,84 +2,98 @@
  * Utility for handling large audio files by chunking
  */
 
- // New limits: 10MB per chunk and 300 seconds maximum duration per chunk
 export const SIZE_LIMIT = 10 * 1024 * 1024; // 10MB in bytes
-export const DURATION_LIMIT = 300; // 300 seconds
 
 /**
- * Helper function to get the duration of an audio blob.
- * This uses an Audio element to load metadata and return the duration in seconds.
- * @param blob The audio blob
- * @returns Promise resolving to the duration in seconds
+ * Helper function to update the WAV header with a new data length.
+ * This function updates the ChunkSize (offset 4) and Subchunk2Size (offset 40)
+ * fields in the WAV header.
+ * @param header A Uint8Array containing the original 44-byte WAV header.
+ * @param dataLength The length of the audio data (in bytes) for the current chunk.
+ * @returns A new Uint8Array with updated header fields.
  */
-async function getAudioDuration(blob: Blob): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.addEventListener('loadedmetadata', () => {
-      URL.revokeObjectURL(url);
-      resolve(audio.duration);
-    });
-    audio.addEventListener('error', () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Failed to load audio metadata"));
-    });
-  });
+function updateWavHeader(header: Uint8Array, dataLength: number): Uint8Array {
+  const headerCopy = header.slice(); // make a copy
+  const view = new DataView(headerCopy.buffer);
+  // ChunkSize at offset 4 = dataLength (current audio data) + header size (44) - 8.
+  view.setUint32(4, dataLength + 44 - 8, true);
+  // Subchunk2Size at offset 40 = dataLength
+  view.setUint32(40, dataLength, true);
+  return headerCopy;
 }
 
 /**
- * Split an audio file into smaller chunks based on size and duration constraints.
- * Uses both maximum file size (default 10MB) and maximum duration (default 300 seconds)
- * to determine an effective chunk size.
+ * Split an audio file into smaller chunks based on size constraints.
+ * For WAV files, the header (first 44 bytes) is updated for each chunk to reflect 
+ * the correct data length.
+ * For other formats, simple binary slicing is used (which may not produce valid audio 
+ * files if headers are required).
  * @param blob The audio blob to split
  * @param sizeLimit Maximum allowed size per chunk in bytes (default 10MB)
- * @param durationLimit Maximum allowed duration per chunk in seconds (default 300)
  * @returns Array of chunks as Blob objects
  */
-export async function splitAudioBlob(blob: Blob, sizeLimit = SIZE_LIMIT, durationLimit = DURATION_LIMIT): Promise<Blob[]> {
-  let totalDuration: number | null = null;
-  try {
-    totalDuration = await getAudioDuration(blob);
-  } catch (e) {
-    console.error('Could not determine audio duration, proceeding with size-based splitting.', e);
-  }
-  
-  // Determine effective chunk size based on both size and duration constraints.
-  // If the audio duration exceeds the allowed limit, compute the corresponding byte size.
-  let effectiveChunkSize = sizeLimit;
-  if (totalDuration && totalDuration > durationLimit) {
-    const sizeBasedOnDuration = (blob.size / totalDuration) * durationLimit;
-    effectiveChunkSize = Math.min(sizeLimit, sizeBasedOnDuration);
-  }
-  
-  // If the blob is already within the effective chunk limit, return it as is.
-  if (blob.size <= effectiveChunkSize) {
+export async function splitAudioBlob(blob: Blob, sizeLimit = SIZE_LIMIT): Promise<Blob[]> {
+  if (blob.size <= sizeLimit) {
     return [blob];
   }
-  
-  const numChunks = Math.ceil(blob.size / effectiveChunkSize);
-  const chunks: Blob[] = [];
-  
-  // Convert blob to array buffer for binary slicing.
-  const arrayBuffer = await blob.arrayBuffer();
-  const view = new Uint8Array(arrayBuffer);
-  
-  for (let i = 0; i < numChunks; i++) {
-    const start = i * effectiveChunkSize;
-    const end = Math.min(start + effectiveChunkSize, blob.size);
-    const chunkData = view.slice(start, end);
-    const chunkBlob = new Blob([chunkData], { type: blob.type });
-    chunks.push(chunkBlob);
+
+  // Check if the blob is a WAV file by inspecting its MIME type.
+  if (blob.type.includes('wav')) {
+    const headerSize = 44;
+    // Extract the header.
+    const headerBlob = blob.slice(0, headerSize);
+    const headerArrayBuffer = await headerBlob.arrayBuffer();
+    const originalHeader = new Uint8Array(headerArrayBuffer);
+
+    // Extract the audio data (without header).
+    const dataBlob = blob.slice(headerSize);
+    const dataArrayBuffer = await dataBlob.arrayBuffer();
+    const dataUint8 = new Uint8Array(dataArrayBuffer);
+
+    // Calculate the maximum size for the audio data in each chunk.
+    const chunkDataSize = sizeLimit - headerSize;
+    const numChunks = Math.ceil(dataUint8.length / chunkDataSize);
+    const chunks: Blob[] = [];
+
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * chunkDataSize;
+      const end = Math.min(start + chunkDataSize, dataUint8.length);
+      const chunkData = dataUint8.slice(start, end);
+
+      // Update the header for this chunk.
+      const updatedHeader = updateWavHeader(originalHeader, chunkData.length);
+
+      // Combine the updated header with the current data chunk.
+      const combined = new Uint8Array(updatedHeader.length + chunkData.length);
+      combined.set(updatedHeader, 0);
+      combined.set(chunkData, updatedHeader.length);
+
+      const chunkBlob = new Blob([combined], { type: blob.type });
+      chunks.push(chunkBlob);
+    }
+    return chunks;
+  } else {
+    // Fallback for non-WAV formats.
+    const numChunks = Math.ceil(blob.size / sizeLimit);
+    const chunks: Blob[] = [];
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8View = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * sizeLimit;
+      const end = Math.min(start + sizeLimit, blob.size);
+      const chunkData = uint8View.slice(start, end);
+      const chunkBlob = new Blob([chunkData], { type: blob.type });
+      chunks.push(chunkBlob);
+    }
+    return chunks;
   }
-  
-  return chunks;
 }
 
 /**
  * Join multiple transcription texts into one.
- * Chunks are joined with double newlines.
+ * Each transcription is trimmed and joined with double newlines.
  * @param transcriptions Array of transcription strings
- * @returns Combined transcription
+ * @returns Combined transcription string
  */
 export function joinTranscriptions(transcriptions: string[]): string {
   return transcriptions
@@ -97,20 +111,19 @@ export function joinTranscriptions(transcriptions: string[]): string {
  * @returns Combined result of type T
  */
 export async function processChunks<T>(
-  chunks: Blob[], 
+  chunks: Blob[],
   processFn: (chunk: Blob, index: number) => Promise<T>,
   combiner: (results: T[]) => T
 ): Promise<T> {
   if (chunks.length === 0) {
     throw new Error('No chunks to process');
   }
-  
+
   if (chunks.length === 1) {
     return await processFn(chunks[0], 0);
   }
-  
+
   const results: T[] = [];
-  
   for (let i = 0; i < chunks.length; i++) {
     try {
       const result = await processFn(chunks[i], i);
@@ -120,6 +133,5 @@ export async function processChunks<T>(
       throw error;
     }
   }
-  
   return combiner(results);
 }
