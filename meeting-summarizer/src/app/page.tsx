@@ -11,9 +11,9 @@ import SummaryDisplay from '@/app/components/SummaryDisplay';
 import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
 import Notification, { NotificationType } from '@/app/components/Notification';
-import ProcessingPipeline from '@/app/components/ProcessingPipeline';
+import ProcessingPipeline from './components/ProcessingPipeline';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
-import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '@/lib/pipelineHelpers';
+import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { BlobFile } from '@vercel/blob';
 
 // Create properly typed motion components

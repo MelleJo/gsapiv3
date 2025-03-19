@@ -146,7 +146,7 @@ export default function ProcessingPipeline({
   return (
     <AnimatePresence>
       {isActive && (
-        <motion.div 
+        <MotionDiv 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -288,7 +288,7 @@ export default function ProcessingPipeline({
               </div>
             </div>
           </div>
-        </motion.div>
+        </MotionDiv>
       )}
     </AnimatePresence>
   );
