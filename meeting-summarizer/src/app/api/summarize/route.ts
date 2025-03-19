@@ -2,7 +2,6 @@
 
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
-import anthropic from '@/lib/anthropic'; // You'll need to create this client
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 import { chatModels } from '@/lib/config';
 
@@ -15,7 +14,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     
     // Extract parameters
-    const { text, model = 'gpt-4o-mini', temperature = 0.3 } = body;
+    const { text, model = 'o3-mini', temperature = 0.3 } = body;
     
     // Validate request
     if (!text) {
@@ -27,11 +26,11 @@ export async function POST(request: Request) {
 
     // Find the model details in the config
     const selectedModel = chatModels.find(m => m.id === model) || 
-                          chatModels.find(m => m.id === 'gpt-4o-mini') || 
+                          chatModels.find(m => m.id === 'o3-mini') || 
                           chatModels[0];
 
     // Create an enhanced, detailed system prompt for meeting summaries
-    const systemPrompt = `Je bent een expert in het maken van gedetailleerde vergadersamenvattingen voor professionele omgevingen. Maak een uitgebreide, feitelijke samenvatting van de transcriptie die ik je ga geven, met de volgende vereisten:
+    const instructions = `Je bent een expert in het maken van gedetailleerde vergadersamenvattingen voor professionele omgevingen. Maak een uitgebreide, feitelijke samenvatting van de transcriptie die ik je ga geven, met de volgende vereisten:
 
 1. Gebruik actieve taal in plaats van passieve taal (bijv. "Jan legde uit dat..." in plaats van "Er werd uitgelegd dat...").
 2. Identificeer deelnemers en hun standpunten wanneer deze duidelijk zijn uit de transcriptie.
@@ -46,65 +45,28 @@ export async function POST(request: Request) {
 
 Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die niet bij de vergadering aanwezig waren, dus zorg ervoor dat het een volledige en nauwkeurige weergave is van wat er besproken is. Gebruik professionele, zakelijke taal.`;
 
-    // Let's check if we're using an OpenAI model or another provider
-    const isOpenAIModel = model.startsWith('gpt-');
-    
-    let summary = '';
-    let inputTokenCount = 0;
-    let outputTokenCount = 0;
-    
-    // Use OpenAI for their models
-    if (isOpenAIModel) {
-      // Create the messages array for OpenAI
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Hier is de transcriptie van een vergadering. Maak een gedetailleerde en complete samenvatting volgens de criteria in je instructies:\n\n${text}` }
-      ];
+    const userInput = `Hier is de transcriptie van een vergadering. Maak een gedetailleerde en complete samenvatting volgens de criteria in je instructies:\n\n${text}`;
 
-      // Estimate token count before making the API call
-      const combinedText = messages.map(m => m.content).join(' ');
-      inputTokenCount = countTokens(combinedText);
+    // Estimate token count 
+    const combinedText = instructions + userInput;
+    const inputTokenCount = countTokens(combinedText);
 
-      // Call OpenAI API
-      const response = await openai.chat.completions.create({
-        model: model,
-        messages: messages as any,
-        temperature: temperature,
-        max_tokens: 4096, // For OpenAI models
-      });
-
-      // Extract summary from response
-      summary = response.choices[0].message.content || '';
-      outputTokenCount = countTokens(summary);
-    } 
-    // Use gpt-4o-mini as fallback for now instead of Claude/o3-mini
-    else {
-      // For now, use gpt-4o-mini as a fallback
-      const fallbackModel = 'gpt-4o-mini';
-      console.log(`Model '${model}' not supported, falling back to ${fallbackModel}`);
-      
-      // Create the messages array for OpenAI
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Hier is de transcriptie van een vergadering. Maak een gedetailleerde en complete samenvatting volgens de criteria in je instructies:\n\n${text}` }
-      ];
-
-      // Estimate token count before making the API call
-      const combinedText = messages.map(m => m.content).join(' ');
-      inputTokenCount = countTokens(combinedText);
-
-      // Call OpenAI API with fallback model
-      const response = await openai.chat.completions.create({
-        model: fallbackModel,
-        messages: messages as any,
-        temperature: temperature,
-        max_tokens: 4096,
-      });
-
-      // Extract summary from response
-      summary = response.choices[0].message.content || '';
-      outputTokenCount = countTokens(summary);
+    // Handle very large input
+    if (inputTokenCount > 15000) {
+      console.log(`Large input detected: ${inputTokenCount} tokens.`);
     }
+
+    // Using the Responses API instead of Chat Completions
+    const response = await openai.responses.create({
+      model: model,
+      instructions: instructions,
+      input: userInput,
+      temperature: temperature,
+    });
+
+    // Extract summary from response
+    const summary = response.output_text || '';
+    const outputTokenCount = countTokens(summary);
 
     // Calculate costs
     const cost = calculateTextCost(
@@ -139,7 +101,7 @@ Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die 
         errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere transcriptie of een ander model.';
         statusCode = 504;
       } else if (error.message.includes('Unsupported parameter')) {
-        errorMessage = 'Het gekozen model wordt momenteel niet ondersteund. Probeer GPT-4o of GPT-4o-mini.';
+        errorMessage = 'Er is een probleem met de API parameters. Probeer een ander model.';
         statusCode = 400;
       }
     }
