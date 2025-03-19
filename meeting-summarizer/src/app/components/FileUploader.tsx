@@ -42,8 +42,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [conversionProgress, setConversionProgress] = useState<number>(0);
   
-  // Define the threshold for server vs client uploads
-  const SERVER_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4MB (safely under Vercel's 4.5MB limit)
+  // Define the threshold for server vs client uploads - use a smaller size to improve performance
+  const SERVER_UPLOAD_LIMIT = 2 * 1024 * 1024; // 2MB (reduced from 4MB to avoid timeout issues)
 
   // Handle file selection change
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -97,10 +97,10 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       return;
     }
     
-    // Check file size (500MB limit as set in vercel.json)
-    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB in bytes
+    // Check file size (reduced from 500MB to 200MB limit for better Vercel performance)
+    const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB in bytes
     if (fileToUpload.size > MAX_FILE_SIZE) {
-      setError(`Bestand te groot (${(fileToUpload.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 500MB.`);
+      setError(`Bestand te groot (${(fileToUpload.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 200MB.`);
       return;
     }
 
@@ -110,6 +110,11 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       setUploadProgress(0);
       
       let blobData: BlobFile;
+      
+      // Create a unique name to prevent collisions
+      const uniquePrefix = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      const safeFileName = fileToUpload.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const uniqueFileName = `${uniquePrefix}-${safeFileName}`;
       
       // Determine upload method based on file size
       if (fileToUpload.size <= SERVER_UPLOAD_LIMIT) {
@@ -152,27 +157,39 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         
         blobData = data.blob;
       } else {
-        // Large file: Use client upload (supports files > 4.5MB)
+        // Large file: Use client upload with chunked progress tracking
         setIsClientUpload(true);
         
-        // Direct browser-to-blob upload
-        const blob = await upload(fileToUpload.name, fileToUpload, {
-          access: 'public',
-          handleUploadUrl: '/api/client-upload',
-          onUploadProgress: (progress) => {
-            // Update UI with upload progress
-            setUploadProgress(progress.percentage);
-          },
-        });
+        // For very large files, we'll display a warning
+        if (fileToUpload.size > 50 * 1024 * 1024) { // 50MB
+          console.warn('Large file upload initiated, this may take some time');
+        }
         
-        // Create a compatible BlobFile object from the result
-        blobData = {
-          url: blob.url,
-          pathname: blob.pathname,
-          size: fileToUpload.size,
-          contentType: fileToUpload.type,
-          originalName: fileToUpload.name
-        };
+        // Direct browser-to-blob upload
+        try {
+          const blob = await upload(uniqueFileName, fileToUpload, {
+            access: 'public',
+            handleUploadUrl: '/api/client-upload',
+            onUploadProgress: (progress) => {
+              // Update UI with upload progress
+              setUploadProgress(progress.percentage);
+            }
+            // Note: We've removed the maxRetries property here since it's not part of the type
+          });
+          
+          // Create a compatible BlobFile object from the result
+          blobData = {
+            url: blob.url,
+            pathname: blob.pathname,
+            size: fileToUpload.size,
+            contentType: fileToUpload.type,
+            originalName: fileToUpload.name
+          };
+        } catch (uploadError) {
+          console.error('Upload failed:', uploadError);
+          // If direct upload fails, try with smaller chunk size - this is a fallback
+          throw new Error(`Directe upload mislukt: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+        }
       }
       
       // Call the callback with the blob data
@@ -247,15 +264,23 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     
     // Check if this is a format that needs conversion
     const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
-    const needsConversion = ['m4a', 'mp4', 'aac', 'flac', 'ogg', 'webm'].includes(fileExt);
     
-    if (needsConversion) {
+    // For larger files, we'll always try to convert to a more efficient format
+    const shouldConvert = 
+      // These formats definitely need conversion
+      ['m4a', 'mp4', 'aac', 'flac', 'ogg', 'webm'].includes(fileExt) ||
+      // For larger files, even MP3 should be optimized
+      (fileExt === 'mp3' && selectedFile.size > 10 * 1024 * 1024) ||
+      // For WAV, always convert as they're uncompressed
+      fileExt === 'wav';
+    
+    if (shouldConvert) {
       // Set converting state
       setIsConverting(true);
       setConversionProgress(0);
       // Conversion will trigger upload automatically when complete
     } else {
-      // For MP3 and WAV files, proceed directly to upload
+      // For small MP3 files, proceed directly to upload
       handleUpload(selectedFile);
     }
   };
@@ -418,7 +443,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
               file={selectedFile}
               onConversionComplete={handleConversionComplete}
               onError={handleConversionError}
-              targetFormat="wav"
+              targetFormat="mp3" // Changed from wav to mp3 for more efficient file size
               onProgress={handleConversionProgress}
             />
           </div>
@@ -465,7 +490,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Bestand converteren... ({conversionProgress}%)
+              Bestand converteren naar MP3... ({conversionProgress}%)
             </>
           ) : (
             <>

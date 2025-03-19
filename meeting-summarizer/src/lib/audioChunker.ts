@@ -1,210 +1,95 @@
-/**
- * Utility for handling large audio files by chunking
- */
-
-export const SIZE_LIMIT = 10 * 1024 * 1024; // 10MB in bytes
+// src/lib/audioChunker.ts
 
 /**
- * Helper function to update the WAV header with a new data length.
- * This function updates the ChunkSize (offset 4) and Subchunk2Size (offset 40)
- * fields in the WAV header.
- * @param header A Uint8Array containing the original 44-byte WAV header.
- * @param dataLength The length of the audio data (in bytes) for the current chunk.
- * @returns A new Uint8Array with updated header fields.
+ * This module provides utilities for processing large audio files
+ * by splitting them into manageable chunks for transcription.
  */
-function updateWavHeader(header: Uint8Array, dataLength: number): Uint8Array {
-  const headerCopy = header.slice(); // make a copy
-  const view = new DataView(headerCopy.buffer);
-  // ChunkSize at offset 4 = dataLength (current audio data) + header size (44) - 8.
-  view.setUint32(4, dataLength + 44 - 8, true);
-  // Subchunk2Size at offset 40 = dataLength
-  view.setUint32(40, dataLength, true);
-  return headerCopy;
-}
+
+// Maximum size limit for a single chunk in bytes (25MB for OpenAI's API)
+export const SIZE_LIMIT = 25 * 1024 * 1024;
+
+// Default chunk size for binary chunking (slightly under the limit)
+export const DEFAULT_CHUNK_SIZE = 24 * 1024 * 1024;
 
 /**
- * Checks if a blob is a WAV file by examining its MIME type or name
+ * Splits an audio blob into smaller chunks based on size constraints.
+ * Currently uses simple binary chunking strategy.
+ * 
+ * @param audioBlob The audio blob to split
+ * @param maxChunkSize Maximum size for each chunk in bytes
+ * @returns Array of audio blob chunks
  */
-function isWavFile(blob: Blob): boolean {
-  const wavTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'];
-  return wavTypes.includes(blob.type.toLowerCase()) || 
-         (blob as any).name?.toLowerCase().endsWith('.wav');
-}
-
-/**
- * Checks if a blob is likely a complex format like M4A/MP4 that can't be easily chunked
- */
-function isComplexFormat(blob: Blob): boolean {
-  const complexTypes = [
-    'audio/mp4', 'audio/x-m4a', 'audio/aac', 'video/mp4', 
-    'application/mp4', 'audio/m4a'
-  ];
-  return complexTypes.includes(blob.type.toLowerCase()) || 
-         (blob as any).name?.toLowerCase().match(/\.(m4a|mp4|aac)$/i);
-}
-
-/**
- * Split an audio file into smaller chunks based on size constraints.
- * For WAV files, the header (first 44 bytes) is updated for each chunk to reflect 
- * the correct data length.
- * For other formats, simple binary slicing is used (which may not produce valid audio 
- * files if headers are required).
- * @param blob The audio blob to split
- * @param sizeLimit Maximum allowed size per chunk in bytes (default 10MB)
- * @returns Array of chunks as Blob objects
- */
-export async function splitAudioBlob(blob: Blob, sizeLimit = SIZE_LIMIT): Promise<Blob[]> {
-  console.log(`Starting to split audio blob of size ${blob.size} bytes with limit ${sizeLimit} bytes`);
-  
-  // If already below size limit, return as is
-  if (blob.size <= sizeLimit) {
-    console.log(`Blob size ${blob.size} is already below limit ${sizeLimit}, returning as single chunk`);
-    return [blob];
+export async function splitAudioBlob(
+  audioBlob: Blob,
+  maxChunkSize: number = DEFAULT_CHUNK_SIZE
+): Promise<Blob[]> {
+  // For files under the size limit, return as-is
+  if (audioBlob.size <= maxChunkSize) {
+    return [audioBlob];
   }
 
-  // Special handling for WAV files
-  if (isWavFile(blob)) {
-    console.log('Using WAV-specific chunking method with header preservation');
-    try {
-      const headerSize = 44; // Standard WAV header size
-      
-      // Extract the header
-      const headerBlob = blob.slice(0, headerSize);
-      const headerArrayBuffer = await headerBlob.arrayBuffer();
-      const originalHeader = new Uint8Array(headerArrayBuffer);
-
-      // Extract the audio data (without header)
-      const dataBlob = blob.slice(headerSize);
-      const dataArrayBuffer = await dataBlob.arrayBuffer();
-      const dataUint8 = new Uint8Array(dataArrayBuffer);
-
-      // Calculate the maximum size for the audio data in each chunk
-      const chunkDataSize = sizeLimit - headerSize;
-      const numChunks = Math.ceil(dataUint8.length / chunkDataSize);
-      console.log(`Creating ${numChunks} WAV chunks with data size ${chunkDataSize} bytes each`);
-      
-      const chunks: Blob[] = [];
-
-      for (let i = 0; i < numChunks; i++) {
-        const start = i * chunkDataSize;
-        const end = Math.min(start + chunkDataSize, dataUint8.length);
-        const chunkData = dataUint8.slice(start, end);
-
-        // Update the header for this chunk
-        const updatedHeader = updateWavHeader(originalHeader, chunkData.length);
-
-        // Combine the updated header with the current data chunk
-        const combined = new Uint8Array(updatedHeader.length + chunkData.length);
-        combined.set(updatedHeader, 0);
-        combined.set(chunkData, updatedHeader.length);
-
-        const chunkBlob = new Blob([combined], { type: blob.type || 'audio/wav' });
-        chunks.push(chunkBlob);
-        
-        console.log(`Created WAV chunk ${i+1}/${numChunks}: ${chunkBlob.size} bytes`);
-      }
-      
-      return chunks;
-    } catch (error) {
-      console.error('Error during WAV chunking:', error);
-      console.log('Falling back to binary chunking method');
-      // Fall back to binary chunking if WAV processing fails
-    }
+  console.log(`Splitting audio blob of size ${audioBlob.size} bytes into chunks of max ${maxChunkSize} bytes`);
+  
+  // Simple binary chunking - slice the blob into roughly equal parts
+  const chunks: Blob[] = [];
+  for (let start = 0; start < audioBlob.size; start += maxChunkSize) {
+    const end = Math.min(start + maxChunkSize, audioBlob.size);
+    const chunk = audioBlob.slice(start, end, audioBlob.type);
+    chunks.push(chunk);
   }
   
-  // For complex formats, warn that chunking might not work correctly
-  if (isComplexFormat(blob)) {
-    console.warn('Warning: Attempting to chunk a complex audio format (like M4A/MP4).');
-    console.warn('These formats contain important metadata that may be lost during chunking.');
-    console.warn('This might result in unplayable or untranscribable chunks.');
-  }
-  
-  // For non-WAV formats or if WAV processing failed, use binary chunking
-  console.log('Using binary chunking method');
-  
-  try {
-    const numChunks = Math.ceil(blob.size / sizeLimit);
-    console.log(`Creating ${numChunks} binary chunks of max ${sizeLimit} bytes each`);
-    
-    const chunks: Blob[] = [];
-    const arrayBuffer = await blob.arrayBuffer();
-    const uint8View = new Uint8Array(arrayBuffer);
-    
-    for (let i = 0; i < numChunks; i++) {
-      const start = i * sizeLimit;
-      const end = Math.min(start + sizeLimit, blob.size);
-      const chunkData = uint8View.slice(start, end);
-      
-      // Keep the original MIME type
-      const chunkBlob = new Blob([chunkData], { type: blob.type || 'audio/mpeg' });
-      chunks.push(chunkBlob);
-      
-      console.log(`Created binary chunk ${i+1}/${numChunks}: ${chunkBlob.size} bytes`);
-    }
-    
-    return chunks;
-  } catch (error) {
-    console.error('Error during binary chunking:', error);
-    throw new Error(`Failed to split audio: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  console.log(`Created ${chunks.length} chunks`);
+  return chunks;
 }
 
 /**
- * Join multiple transcription texts into one.
- * Each transcription is trimmed and joined with double newlines.
- * @param transcriptions Array of transcription strings
- * @returns Combined transcription string
- */
-export function joinTranscriptions(transcriptions: string[]): string {
-  console.log(`Joining ${transcriptions.length} transcription segments`);
-  
-  // Filter out empty transcriptions and join with double newlines
-  const result = transcriptions
-    .map(t => t?.trim() || '')
-    .filter(t => t)
-    .join('\n\n');
-  
-  console.log(`Joined transcription length: ${result.length} characters`);
-  return result;
-}
-
-/**
- * Process multiple audio chunks sequentially with a provided processing function.
- * Combines the results using the provided combiner function.
- * @param chunks Array of audio chunks
+ * Process an array of chunks with a given processing function and combine the results.
+ * 
+ * @param chunks Array of chunks to process
  * @param processFn Function to process each chunk
- * @param combiner Function to combine the results of each chunk processing
- * @returns Combined result of type T
+ * @param combineFn Function to combine the results
+ * @returns The combined result
  */
-export async function processChunks<T>(
-  chunks: Blob[],
-  processFn: (chunk: Blob, index: number) => Promise<T>,
-  combiner: (results: T[]) => T
-): Promise<T> {
+export async function processChunks<T, R = T>(
+  chunks: any[],
+  processFn: (chunk: any, index: number) => Promise<T>,
+  combineFn: (results: T[]) => R
+): Promise<R> {
   if (chunks.length === 0) {
     throw new Error('No chunks to process');
   }
   
   if (chunks.length === 1) {
-    console.log('Processing single chunk');
-    return await processFn(chunks[0], 0);
+    // If there's only one chunk, process it directly
+    const result = await processFn(chunks[0], 0);
+    return combineFn([result]);
   }
   
-  console.log(`Processing ${chunks.length} chunks sequentially`);
+  // Process all chunks and collect results
   const results: T[] = [];
-  
   for (let i = 0; i < chunks.length; i++) {
-    try {
-      console.log(`Starting processing of chunk ${i+1}/${chunks.length}`);
-      const result = await processFn(chunks[i], i);
-      results.push(result);
-      console.log(`Successfully processed chunk ${i+1}/${chunks.length}`);
-    } catch (error) {
-      console.error(`Error processing chunk ${i+1}/${chunks.length}:`, error);
-      throw error;
-    }
+    const result = await processFn(chunks[i], i);
+    results.push(result);
   }
   
-  console.log(`All ${chunks.length} chunks processed, combining results`);
-  return combiner(results);
+  // Combine the results
+  return combineFn(results);
+}
+
+/**
+ * Joins multiple transcription text chunks with proper spacing.
+ * 
+ * @param transcriptions Array of text transcriptions to join
+ * @returns Combined transcription text
+ */
+export function joinTranscriptions(transcriptions: string[]): string {
+  // Filter out empty transcriptions
+  const validTranscriptions = transcriptions.filter(t => t && t.trim());
+  
+  if (validTranscriptions.length === 0) {
+    return '';
+  }
+  
+  // Join transcriptions with double newline for paragraph separation
+  return validTranscriptions.join('\n\n');
 }

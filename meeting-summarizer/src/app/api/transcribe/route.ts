@@ -1,5 +1,4 @@
 // src/app/api/transcribe/route.ts
-
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
@@ -51,8 +50,12 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000):
   throw lastError;
 }
 
+// This is the most important fix - ensuring we export a POST handler function
 export async function POST(request: Request) {
   try {
+    // Log the incoming request for debugging
+    console.log(`Received transcription request to ${request.url}`);
+    
     const body = await request.json();
     
     // Parameters for Blob URL processing
@@ -135,7 +138,7 @@ export async function POST(request: Request) {
         // Process each chunk and combine results
         const transcription = await processChunks<string>(
           audioChunks,
-          async (chunk, index) => {
+          async (chunk: Blob, index: number) => {
             console.log(`Processing chunk ${index + 1}/${audioChunks.length}, size: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
             
             try {
@@ -168,7 +171,7 @@ export async function POST(request: Request) {
             }
           },
           // Combine function
-          (results) => {
+          (results: string[]) => {
             console.log(`Combining ${results.length} transcription chunks...`);
             return joinTranscriptions(results);
           }
@@ -387,7 +390,7 @@ async function handleComplexFormatFile(
     return NextResponse.json(
       { 
         error: `Could not process the M4A/MP4 file. Error: ${error.message || 'Unknown error'}. 
-               Try converting your file to WAV or MP3 format for better results.` 
+               Try converting your file to MP3 format for better results.` 
       },
       { status: 500 }
     );

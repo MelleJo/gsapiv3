@@ -24,7 +24,7 @@ export default function AudioConverter({
   file,
   onConversionComplete,
   onError,
-  targetFormat = 'wav',
+  targetFormat = 'mp3', // Changed default from wav to mp3
   onProgress
 }: AudioConverterProps) {
   const [isConverting, setIsConverting] = useState<boolean>(false);
@@ -75,8 +75,15 @@ export default function AudioConverter({
 
       // Check if the file is already in the target format
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      if (fileExtension === targetFormat) {
-        console.log(`File is already in ${targetFormat} format, skipping conversion`);
+      
+      // Only skip if it's already an optimized MP3 file (under 10MB)
+      const skipConversion = 
+        fileExtension === targetFormat && 
+        targetFormat === 'mp3' && 
+        file.size < 10 * 1024 * 1024;
+        
+      if (skipConversion) {
+        console.log(`File is already an optimized ${targetFormat} format, skipping conversion`);
         onConversionComplete(file);
         return;
       }
@@ -102,18 +109,22 @@ export default function AudioConverter({
         let ffmpegArgs: string[];
         
         if (targetFormat === 'wav') {
+          // More optimized WAV conversion settings to reduce file size while maintaining quality
           ffmpegArgs = [
             '-i', inputFileName,
             '-c:a', 'pcm_s16le',  // 16-bit PCM audio codec
-            '-ar', '44100',       // 44.1kHz sample rate
-            '-ac', '2',           // 2 channels (stereo)
+            '-ar', '22050',       // Reduced sample rate from 44100 to 22050 Hz
+            '-ac', '1',           // Convert to mono (1 channel) instead of stereo
             outputFileName
           ];
         } else if (targetFormat === 'mp3') {
+          // Optimized MP3 settings for speech/meeting audio
           ffmpegArgs = [
             '-i', inputFileName,
             '-c:a', 'libmp3lame', // MP3 codec
-            '-b:a', '192k',       // Bitrate
+            '-b:a', '64k',        // Lower bitrate for speech (64kbps instead of 192k)
+            '-ac', '1',           // Convert to mono
+            '-ar', '22050',       // Lower sample rate
             outputFileName
           ];
         } else {
