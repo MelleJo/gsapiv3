@@ -27,8 +27,9 @@ interface SummaryDisplayProps {
 
 // Define types for sections
 type Section = {
-  type: 'section' | 'formatted' | 'paragraph';
+  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list';
   content: string;
+  items?: string[];
   number?: string;
   title?: string;
 };
@@ -49,51 +50,70 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     // Split text into sections or paragraphs
     let sections: Section[] = [];
     
-    // Check if the summary has numbered sections (like "1. **Title:**")
-    const hasNumberedSections = /\d+\.\s+\*\*[^*]+\*\*/.test(text);
+    // Split by double line breaks first
+    const blocks = text.split(/\n\n+/);
     
-    // Check for special formatting patterns
-    const hasAsterisks = text.includes('**');
-    
-    if (hasNumberedSections || hasAsterisks) {
-      // Split by double line breaks first
-      const blocks = text.split(/\n\n+/);
-      
-      for (const block of blocks) {
-        // Check if this is a section header with asterisks - without using /s flag
-        const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)([^]*?)$/);
+    for (const block of blocks) {
+      // Check if this is a bullet list
+      if (block.match(/^[-*]\s+/m) || block.match(/^\d+\.\s+/m)) {
+        // This is a list - split into items
+        const items: string[] = [];
+        const listLines = block.split('\n');
+        let currentItem = '';
         
-        if (sectionMatch) {
-          const [, number, , title, content] = sectionMatch;
-          
+        for (let i = 0; i < listLines.length; i++) {
+          const line = listLines[i];
+          // If this line starts with a bullet or number, it's a new item
+          if (line.match(/^[-*]\s+/) || line.match(/^\d+\.\s+/)) {
+            if (currentItem) {
+              items.push(currentItem);
+              currentItem = '';
+            }
+            currentItem = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
+          } else if (line.trim() && currentItem) {
+            // This is a continuation of the current item
+            currentItem += ' ' + line.trim();
+          }
+        }
+        
+        // Add the last item if there is one
+        if (currentItem) {
+          items.push(currentItem);
+        }
+        
+        if (items.length > 0) {
           sections.push({
-            type: 'section',
-            number: number || '',
-            title: title || '', // Ensure title is never undefined
-            content: content.trim()
+            type: 'bullet-list',
+            content: block,
+            items: items
           });
-        } else if (block.includes('**')) {
-          // This paragraph has some bold formatting but isn't a section header
-          sections.push({
-            type: 'formatted',
-            content: block
-          });
-        } else {
-          // Regular paragraph
-          sections.push({
-            type: 'paragraph',
-            content: block
-          });
+          continue;
         }
       }
-    } else {
-      // Simple paragraph processing for plain text
-      const paragraphs = text.split(/\n\n+/);
       
-      for (const para of paragraphs) {
+      // Check if this is a section header with asterisks - without using /s flag
+      const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)([^]*?)$/);
+      
+      if (sectionMatch) {
+        const [, number, , title, content] = sectionMatch;
+        
+        sections.push({
+          type: 'section',
+          number: number || '',
+          title: title || '', // Ensure title is never undefined
+          content: content.trim()
+        });
+      } else if (block.includes('**')) {
+        // This paragraph has some bold formatting but isn't a section header
+        sections.push({
+          type: 'formatted',
+          content: block
+        });
+      } else {
+        // Regular paragraph
         sections.push({
           type: 'paragraph',
-          content: para
+          content: block
         });
       }
     }
@@ -158,10 +178,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="bg-white rounded-2xl shadow-lg p-6"
+      className="bg-white rounded-2xl shadow-lg p-8 border-l-4 border-blue-500"
     >
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">Samenvatting</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Samenvatting</h2>
         <MotionButton 
           variants={buttonVariants}
           whileHover="hover"
@@ -202,32 +222,41 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         </MotionButton>
       </div>
       
-      <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+      <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed">
         {sections.map((section, index) => {
           if (section.type === 'section') {
             return (
-              <div key={index} className="mb-4">
-                <h3 className="text-lg font-semibold text-blue-700 mt-4 mb-2 pb-1 border-b border-blue-200">
+              <div key={index} className="mb-6">
+                <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100">
                   {section.number && <span className="mr-1">{section.number}</span>}
-                  {/* Fixed type safety issue here */}
                   {section.title ? section.title.replace(/\*\*/g, '') : ''}
                 </h3>
-                <p className="text-gray-700 leading-relaxed">
+                <div className="text-gray-700 leading-relaxed pl-1">
                   {section.content}
-                </p>
+                </div>
+              </div>
+            );
+          } else if (section.type === 'bullet-list') {
+            return (
+              <div key={index} className="mb-4 pl-2">
+                <ul className="list-disc space-y-2 pl-5">
+                  {section.items?.map((item, itemIndex) => (
+                    <li key={itemIndex} className="pl-1">{item}</li>
+                  ))}
+                </ul>
               </div>
             );
           } else if (section.type === 'formatted') {
             return (
               <div 
                 key={index} 
-                className="mb-4 text-gray-700 leading-relaxed"
+                className="mb-4"
                 dangerouslySetInnerHTML={{ __html: renderFormattedText(section.content) }}
               />
             );
           } else {
             return (
-              <p key={index} className="mb-4 text-gray-700 leading-relaxed">
+              <p key={index} className="mb-4">
                 {section.content}
               </p>
             );

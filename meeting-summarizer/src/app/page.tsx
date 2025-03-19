@@ -15,6 +15,8 @@ import ProcessingPipeline from './components/ProcessingPipeline';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { BlobFile } from '@vercel/blob';
+import FinalScreen from '@/app/components/FinalScreen';
+
 
 // Create properly typed motion components
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -1035,67 +1037,89 @@ const handleBlobUpload = (blob: BlobFile) => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="mb-12"
               >
-                <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
-                        </svg>
-                      </div>
-                      <h2 className="text-xl font-semibold text-neutral-800">Samenvatting Genereren</h2>
-                    </div>
-                    
-                    {settings.showCosts && summaryCost > 0 && (
-                      <div className="text-xs text-neutral-500 bg-neutral-50 px-3 py-1 rounded-full">
-                        Geschatte kosten: ${summaryCost.toFixed(4)}
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex justify-center">
-                    <button
-                      onClick={handleSummarize}
-                      disabled={!transcription || isSummarizing}
-                      className={`px-6 py-3 rounded-xl text-white font-medium flex items-center gap-2 transition-all ${
-                        !transcription || isSummarizing
-                          ? 'bg-neutral-300 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:shadow-lg hover:shadow-purple-200 active:scale-[0.98]'
-                      }`}
-                    >
-                      {isSummarizing ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Samenvatting Genereren...
-                        </>
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 8H8a4 4 0 1 0 0 8h4"></path>
-                            <path d="M16 12h-4"></path>
-                          </svg>
-                          Genereer Samenvatting
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-                
-                <SummaryDisplay summary={summary} isLoading={isSummarizing} />
-                
-                {/* Add SummaryActions component here */}
-                {summary && !isSummarizing && (
-                  <SummaryActions
+                {summary ? (
+                  // Use the new FinalScreen component when we have a summary
+                  <FinalScreen 
                     summary={summary}
                     transcription={transcription}
+                    audioFileName={audioFileName}
+                    isSummarizing={isSummarizing}
+                    transcriptionInfo={transcriptionInfo}
                     onRefinedSummary={handleRefinedSummary}
                     onOpenEmailModal={handleOpenEmailModal}
+                    onReset={handleReset}
+                    onToggleSettings={toggleSettings}
                   />
+                ) : (
+                  // Show the original UI when generating summary
+                  <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+                          </svg>
+                        </div>
+                        <h2 className="text-xl font-semibold text-neutral-800">Samenvatting Genereren</h2>
+                      </div>
+                      
+                      {settings.showCosts && summaryCost > 0 && (
+                        <div className="text-xs text-neutral-500 bg-neutral-50 px-3 py-1 rounded-full">
+                          Geschatte kosten: ${summaryCost.toFixed(4)}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex justify-center">
+                      <button
+                        onClick={handleSummarize}
+                        disabled={!transcription || isSummarizing}
+                        className={`px-6 py-3 rounded-xl text-white font-medium flex items-center gap-2 transition-all ${
+                          !transcription || isSummarizing
+                            ? 'bg-neutral-300 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:shadow-lg hover:shadow-purple-200 active:scale-[0.98]'
+                        }`}
+                      >
+                        {isSummarizing ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Samenvatting Genereren...
+                          </>
+                        ) : (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 8H8a4 4 0 1 0 0 8h4"></path>
+                              <path d="M16 12h-4"></path>
+                            </svg>
+                            Genereer Samenvatting
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {isSummarizing && (
+                  <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+                    <div className="flex items-center mb-4">
+                      <div className="animate-pulse mr-3">
+                        <div className="w-8 h-8 bg-purple-100 rounded-full"></div>
+                      </div>
+                      <div className="animate-pulse">
+                        <div className="h-5 bg-gray-200 rounded w-40 mb-2"></div>
+                        <div className="h-4 bg-gray-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="animate-pulse h-4 bg-gray-200 rounded"></div>
+                      <div className="animate-pulse h-4 bg-gray-200 rounded"></div>
+                      <div className="animate-pulse h-4 bg-gray-200 rounded w-3/4"></div>
+                    </div>
+                  </div>
                 )}
               </MotionDiv>
             )}
