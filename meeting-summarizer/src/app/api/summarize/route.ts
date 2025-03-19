@@ -30,74 +30,96 @@ export async function POST(request: Request) {
                           chatModels[0];
 
     // Create an enhanced, detailed system prompt for meeting summaries
-    const instructions = `Je bent een expert in het maken van gedetailleerde vergadersamenvattingen voor professionele omgevingen. Maak een uitgebreide, feitelijke samenvatting van de transcriptie die ik je ga geven, met de volgende vereisten:
-
-1. Gebruik actieve taal in plaats van passieve taal (bijv. "Jan legde uit dat..." in plaats van "Er werd uitgelegd dat...").
-2. Identificeer deelnemers en hun standpunten wanneer deze duidelijk zijn uit de transcriptie.
-3. Vermeld concrete beslissingen, actiepunten, en verantwoordelijken met deadlines indien genoemd.
-4. Structureer de samenvatting met duidelijke secties en gebruik waar nodig opsommingstekens voor betere leesbaarheid.
-5. Wees gedetailleerd en volledig - hoe langer de transcriptie, hoe uitgebreider de samenvatting moet zijn.
-6. Vermijd hallucinations - neem alleen informatie op die daadwerkelijk in de transcriptie staat.
-7. Geef belangrijke cijfers, metrics en specifieke voorbeelden die in de vergadering werden genoemd.
-8. Als er tegenstrijdige standpunten waren, vermeld deze objectief.
-9. Organiseer de belangrijkste onderwerpen chronologisch zoals ze in de vergadering aan bod kwamen.
-10. Sluit af met een korte sectie "Genomen beslissingen" en indien van toepassing "Actiepunten" met verantwoordelijken.
-
-Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die niet bij de vergadering aanwezig waren, dus zorg ervoor dat het een volledige en nauwkeurige weergave is van wat er besproken is. Gebruik professionele, zakelijke taal.`;
-
-    const userInput = `Hier is de transcriptie van een vergadering. Maak een gedetailleerde en complete samenvatting volgens de criteria in je instructies:\n\n${text}`;
-
-    // Estimate token count 
-    const combinedText = instructions + userInput;
-    const inputTokenCount = countTokens(combinedText);
+    const meetingSummaryPrompt = `Maak een gedetailleerde, feitelijke samenvatting van deze vergadering. Gebruik actieve taal, niet passief. Identificeer deelnemers en hun standpunten. Vermeld beslissingen en actiepunten met verantwoordelijken. Structureer met duidelijke secties en gebruik opsommingstekens waar nodig. Wees gedetailleerd - langere transcripties verdienen uitgebreidere samenvattingen. Vermijd hallucinations. Vermeld belangrijke cijfers en voorbeelden. Wees objectief over tegenstrijdige standpunten. Organiseer onderwerpen chronologisch. Sluit af met "Genomen beslissingen" en "Actiepunten" secties.`;
 
     let summary = '';
     let outputTokenCount = 0;
+    const inputTokenCount = countTokens(text);
 
-    // Handle o3-mini's special format
+    // Different handling based on model
     if (model === 'o3-mini') {
-      const response = await openai.responses.create({
-        model: "o3-mini",
-        input: [{
-          role: "user",
-          content: userInput
-        }],
-        instructions,
-        temperature,
-        text: {
-          format: {
-            type: "text"
-          }
-        },
-        reasoning: {
-          effort: "medium"
-        },
-        tools: [],
-        store: true
-      });
+      // For o3-mini, strictly follow the documentation example format
+      try {
+        // First try with a single item in the input array
+        const response = await openai.responses.create({
+          model: "o3-mini",
+          input: [{
+            role: "user",
+            content: `${meetingSummaryPrompt}\n\nHier is de transcriptie:\n\n${text}`
+          }],
+          text: {
+            format: {
+              type: "text"
+            }
+          },
+          reasoning: {
+            effort: "medium"
+          },
+          tools: [],
+          store: true
+        });
 
-      summary = response.output_text || '';
-    } 
-    // Standard response API format for other models
-    else if (model.startsWith('gpt-')) {
-      const response = await openai.responses.create({
-        model,
-        instructions,
-        input: userInput,
-        temperature
-      });
-
-      summary = response.output_text || '';
-    }
-    // Fallback to chat completion API for any other models
-    else {
+        // Extract the summary
+        summary = response.output_text || '';
+      } catch (innerError) {
+        console.error("First attempt failed:", innerError);
+        
+        // If the first attempt failed, try with empty input and use system message
+        try {
+          const response = await openai.responses.create({
+            model: "o3-mini",
+            input: [],
+            instructions: `${meetingSummaryPrompt}\n\nHier is de transcriptie:\n\n${text}`,
+            text: {
+              format: {
+                type: "text"
+              }
+            },
+            reasoning: {
+              effort: "medium"
+            },
+            tools: [],
+            store: true
+          });
+          
+          summary = response.output_text || '';
+        } catch (secondError) {
+          console.error("Second attempt failed:", secondError);
+          
+          // Try a third version with standard chat format as fallback
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // Fallback to gpt-4o-mini
+            messages: [
+              { 
+                role: 'system', 
+                content: meetingSummaryPrompt
+              },
+              { 
+                role: 'user', 
+                content: `Hier is de transcriptie van een vergadering:\n\n${text}`
+              }
+            ],
+            temperature: 0.3
+          });
+          
+          summary = response.choices[0].message.content || '';
+        }
+      }
+    } else {
+      // Standard chat completion API for other models
       const response = await openai.chat.completions.create({
-        model,
+        model: model,
         messages: [
-          { role: 'system', content: instructions },
-          { role: 'user', content: userInput }
+          { 
+            role: 'system', 
+            content: meetingSummaryPrompt
+          },
+          { 
+            role: 'user', 
+            content: `Hier is de transcriptie van een vergadering:\n\n${text}`
+          }
         ],
-        temperature
+        temperature: temperature
       });
 
       summary = response.choices[0].message.content || '';
@@ -127,26 +149,44 @@ Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die 
   } catch (error) {
     console.error('Error generating summary:', error);
     
+    // Detailed error logging
+    if (error instanceof Error) {
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Try to extract more details
+      const anyError = error as any;
+      if (anyError.response) {
+        console.error('Response data:', anyError.response.data);
+        console.error('Response status:', anyError.response.status);
+      }
+    }
+    
+    // Provide a meaningful error response
     let errorMessage = 'Er is een fout opgetreden bij het genereren van de samenvatting';
     let statusCode = 500;
     
     if (error instanceof Error) {
-      console.error('Full error:', error);
-      errorMessage = error.message;
-      
-      // Check for specific error types
+      // Extract a user-friendly error message
       if (error.message.includes('timeout')) {
-        errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere transcriptie of een ander model.';
+        errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere transcriptie.';
         statusCode = 504;
-      } else if (error.message.includes('Unsupported parameter')) {
-        errorMessage = 'Er is een probleem met de API parameters. Probeer een ander model.';
+      } else if (error.message.includes('parameter')) {
+        errorMessage = `API parameter fout: ${error.message}. Probeer een ander model.`;
         statusCode = 400;
+      } else {
+        // Include part of the actual error for debugging
+        errorMessage = `Fout: ${error.message.substring(0, 100)}...`;
       }
     }
     
     // Return error response
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ 
+        error: errorMessage,
+        suggestion: "Probeer gpt-4o-mini als alternatief, dat werkt betrouwbaarder."
+      }),
       { 
         status: statusCode,
         headers: { 'Content-Type': 'application/json' }
