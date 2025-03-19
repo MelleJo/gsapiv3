@@ -72,12 +72,36 @@ export default function ProcessingPipeline({
     };
   }, [isActive]);
 
+  // Update time estimate more frequently
+  useEffect(() => {
+    if (isActive && status.stage !== 'completed' && status.stage !== 'error') {
+      const updateInterval = setInterval(() => {
+        if (status.estimatedTimeLeft) {
+          const newEstimate = Math.max(1, status.estimatedTimeLeft - 1);
+          
+          // Update the estimated time left without waiting for the parent component
+          status.estimatedTimeLeft = newEstimate;
+        }
+      }, 1000); // Update every second
+      
+      return () => clearInterval(updateInterval);
+    }
+  }, [isActive, status]);
+
   // Format time for display
   const formatTime = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+    // Round to nearest integer for cleaner display
+    const roundedSeconds = Math.round(seconds);
+    
+    if (roundedSeconds < 60) {
+      return `${roundedSeconds} sec`;
+    }
+    
+    const mins = Math.floor(roundedSeconds / 60);
+    const secs = roundedSeconds % 60;
+    
+    // Only show minutes if it's actually more than a minute
+    return `${mins}:${secs.toString().padStart(2, '0')} min`;
   };
 
   // Get stage title
@@ -203,13 +227,22 @@ export default function ProcessingPipeline({
                 </div>
               )}
               
-              {/* Overall progress bar */}
-              <div className="mb-4">
+              {/* Single progress bar */}
+              <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">Totale voortgang</span>
-                  <span className="text-sm font-medium text-gray-700">{calculateOverallProgress()}%</span>
+                  <span className="text-sm text-gray-500">Voortgang</span>
+                  <div className="flex items-center gap-2">
+                    {status.stage !== 'completed' && status.stage !== 'error' && (
+                      <MotionDiv
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ repeat: Infinity, duration: 1.5 }}
+                        className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                      />
+                    )}
+                    <span className="text-sm font-medium text-gray-700">{calculateOverallProgress()}%</span>
+                  </div>
                 </div>
-                <div className="h-2.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
                   <MotionDiv 
                     className="h-full bg-gradient-to-r from-blue-600 to-purple-600"
                     initial={{ width: 0 }}
@@ -218,31 +251,6 @@ export default function ProcessingPipeline({
                   />
                 </div>
               </div>
-              
-              {/* Current stage progress bar */}
-              {status.stage !== 'completed' && status.stage !== 'error' && (
-                <div className="mb-8">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-500">Huidige stap</span>
-                    <div className="flex items-center gap-2">
-                      <MotionDiv
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ repeat: Infinity, duration: 1.5 }}
-                        className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">{status.progress}%</span>
-                    </div>
-                  </div>
-                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <MotionDiv 
-                      className="h-full bg-blue-500"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${status.progress}%` }}
-                      transition={{ type: 'spring', stiffness: 60, damping: 15 }}
-                    />
-                  </div>
-                </div>
-              )}
               
               {/* Time estimate if available */}
               {status.estimatedTimeLeft !== undefined && status.stage !== 'completed' && status.stage !== 'error' && (

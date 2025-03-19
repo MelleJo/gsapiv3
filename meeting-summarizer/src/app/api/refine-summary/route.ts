@@ -1,133 +1,126 @@
-// src/app/api/transcribe/route.ts
+// src/app/api/refine-summary/route.ts
 
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
-import { whisperModels } from '@/lib/config';
-import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
-
-// Helper function to add retry logic
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
-  let lastError: any;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      lastError = error;
-      console.log(`Poging ${attempt} mislukt. ${attempt < maxRetries ? 'Opnieuw proberen...' : 'Opgegeven.'}`);
-      
-      // If this is not the last attempt, wait before retrying
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, delay * attempt)); // Exponential backoff
-      }
-    }
-  }
-  
-  throw lastError;
-}
+import { chatModels } from '@/lib/config';
+import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 
 export async function POST(request: Request) {
   try {
+    // Parse request body
     const body = await request.json();
     
-    // Nieuwe parameters voor Blob URL verwerking
-    const blobUrl = body.blobUrl;
-    const originalFileName = body.originalFileName || 'audio.mp3';
-    const fileSize = body.fileSize || 0;
-    const modelId = body.model || 'whisper-1';
+    // Extract parameters
+    const { summary, transcript, action, topic, customPrompt } = body;
     
-    if (!blobUrl) {
+    // Validate required inputs - don't check for audio URL
+    if (!summary) {
       return NextResponse.json(
-        { error: 'Geen audio URL aangeleverd' },
+        { error: 'Geen samenvatting aangeleverd voor verfijning' },
         { status: 400 }
       );
     }
 
-    // Get the file extension from the original filename
-    const fileExt = originalFileName.split('.').pop()?.toLowerCase();
-    const validExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
-    
-    if (!fileExt || !validExtensions.includes(fileExt)) {
+    if (!action) {
       return NextResponse.json(
-        { error: `Ongeldig bestandsformaat. Ondersteunde formaten: ${validExtensions.join(', ')}` },
+        { error: 'Geen actie gespecificeerd voor de verfijning' },
         { status: 400 }
       );
     }
 
-    // Estimate duration and cost
-    const fileSizeMB = fileSize / (1024 * 1024);
-    const estimatedDurationMinutes = estimateAudioDuration(fileSize);
-    const selectedModel = whisperModels.find(m => m.id === modelId) || whisperModels[0];
-    const estimatedCost = calculateTranscriptionCost(
-      estimatedDurationMinutes, 
-      selectedModel.costPerMinute
+    // Use GPT-4o-mini as default model for summary refinements
+    const model = 'gpt-4o-mini';
+    const selectedModel = chatModels.find(m => m.id === model) || chatModels.find(m => m.id === 'gpt-4o-mini') || chatModels[0];
+
+    // Create the system prompt based on the action
+    let systemPrompt = '';
+    
+    switch (action) {
+      case 'make-detailed':
+        systemPrompt = `Je bent een expert in het schrijven van uitgebreide vergadersamenvattingen. Ik geef je een bestaande samenvatting en de ruwe transcriptie van een vergadering. Maak de samenvatting gedetailleerder door relevante informatie uit de transcriptie toe te voegen die in de huidige samenvatting ontbreekt.
+
+Behoud de structuur van de originele samenvatting maar voeg meer details, voorbeelden, en feitelijke informatie toe. Hou de schrijfstijl consistent. Als er in de transcriptie belangrijke discussiepunten, beslissingen, of actiepunten staan die in de samenvatting missen, voeg deze dan toe.`;
+        break;
+        
+      case 'elaborate-topic':
+        if (!topic) {
+          return NextResponse.json(
+            { error: 'Geen onderwerp gespecificeerd voor uitbreiding' },
+            { status: 400 }
+          );
+        }
+        systemPrompt = `Je bent een expert in het schrijven van gerichte vergadersamenvattingen. Ik geef je een bestaande samenvatting en de ruwe transcriptie van een vergadering, plus een specifiek onderwerp waarover ik meer details wil. Breid de samenvatting uit met alle relevante informatie uit de transcriptie over dit specifieke onderwerp: "${topic}".
+
+Voeg details, context, discussiepunten, en besluiten toe die gerelateerd zijn aan dit onderwerp en die in de transcriptie voorkomen. Als het onderwerp niet of nauwelijks in de transcriptie voorkomt, geef dan aan dat er weinig informatie over beschikbaar is. Behoud de algehele structuur van de samenvatting maar verfijn het gedeelte over het gevraagde onderwerp.`;
+        break;
+        
+      case 'email-format':
+        systemPrompt = `Je bent een communicatie-expert die vergadernotities herstructureert in e-mailformaat. Ik geef je een samenvatting van een vergadering en optioneel een transcriptie. Herschrijf deze in een formele, professionele e-mail die naar collega's gestuurd kan worden.
+
+De e-mail moet een duidelijke onderwerpregel bevatten (die je mag suggereren), een korte intro, een gestructureerde samenvatting van de belangrijkste punten, en een professionele afsluiting. Zorg voor een duidelijke structuur met kopjes of opsommingstekens voor de belangrijkste punten. De toon moet professioneel maar toegankelijk zijn.`;
+        break;
+        
+      case 'custom':
+        if (!customPrompt) {
+          return NextResponse.json(
+            { error: 'Geen aangepaste instructie ingevoerd' },
+            { status: 400 }
+          );
+        }
+        systemPrompt = `Je bent een expert in het verfijnen van vergadersamenvattingen. Ik geef je een bestaande samenvatting, de ruwe transcriptie, en een specifieke instructie voor hoe je de samenvatting moet aanpassen. Volg deze instructie nauwkeurig: "${customPrompt}".
+
+Gebruik de transcriptie als bron van extra informatie maar focus op het uitvoeren van de gevraagde aanpassing. Behoud de professionaliteit en helderheid van de originele samenvatting, tenzij anders gevraagd in de instructie.`;
+        break;
+        
+      default:
+        return NextResponse.json(
+          { error: 'Ongeldige actie gespecificeerd' },
+          { status: 400 }
+        );
+    }
+
+    // Create chat completion request
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Hier is de samenvatting:\n\n${summary}\n\n${transcript ? `Hier is de transcriptie:\n\n${transcript}` : ''}\n\n${topic ? `Focus op het onderwerp: ${topic}` : ''}${customPrompt ? `Specifieke instructie: ${customPrompt}` : ''}` }
+    ];
+
+    // Call OpenAI API
+    const response = await openai.chat.completions.create({
+      model: model,
+      messages: messages as any,
+      temperature: 0.3, // Use a moderate temperature for refinements
+    });
+
+    // Get the refined summary
+    const refinedSummary = response.choices[0].message.content || '';
+
+    // Calculate costs
+    const inputTokens = countTokens(messages.map(m => m.content).join(' '));
+    const outputTokens = countTokens(refinedSummary);
+    const cost = calculateTextCost(
+      inputTokens,
+      outputTokens,
+      selectedModel.inputCost,
+      selectedModel.outputCost
     );
 
-    console.log(`Verwerken van bestand via Blob URL. Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
-
-    try {
-      const transcription = await withRetry(async () => {
-        // First download the file from the Blob URL
-        const audioResponse = await fetch(blobUrl);
-        if (!audioResponse.ok) {
-          throw new Error(`Failed to fetch audio file from URL: ${audioResponse.status} ${audioResponse.statusText}`);
-        }
-        
-        // Get the file as a blob
-        const audioBlob = await audioResponse.blob();
-        
-        // Convert to a File object which OpenAI API accepts
-        const file = new File([audioBlob], originalFileName, { type: audioBlob.type });
-        
-        // Now use the file with OpenAI
-        return await openai.audio.transcriptions.create({
-          file: file,
-          model: modelId,
-          language: 'nl',
-          response_format: 'text',
-        });
-      }, 3, 2000);
-
-      return NextResponse.json({ 
-        transcription: transcription,
-        usage: {
-          model: selectedModel.name,
-          estimatedDurationMinutes,
-          estimatedCost
-        }
-      });
-    } catch (openaiError: any) {
-      console.error('OpenAI API fout bij het verwerken van Blob URL:', openaiError);
-      
-      let errorMessage = 'OpenAI API fout';
-      let statusCode = 500;
-      
-      // Error handling voor specifieke foutscenario's
-      if (openaiError.message?.includes('file')) {
-        errorMessage = 'Probleem met het audio bestand. Controleer of het bestand toegankelijk is.';
-      } else if (openaiError.status === 413 || (openaiError.message && openaiError.message.includes('too large'))) {
-        errorMessage = 'Audio bestand te groot voor verwerking door OpenAI. De maximale grootte voor OpenAI is ongeveer 25MB.';
-        statusCode = 413;
-      } else if (openaiError.status === 429) {
-        errorMessage = 'API limiet bereikt. Probeer het over enkele ogenblikken opnieuw.';
-        statusCode = 429;
-      } else if (openaiError.status === 401) {
-        errorMessage = 'Authenticatiefout. Controleer uw OpenAI API-sleutel.';
-        statusCode = 401;
-      } else if (openaiError.message) {
-        errorMessage = `OpenAI Transcriptie fout: ${openaiError.message}`;
+    // Return the result
+    return NextResponse.json({
+      refinedSummary,
+      usage: {
+        model: selectedModel.name,
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        cost
       }
-      
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: statusCode }
-      );
-    }
-  } catch (error: any) {
-    console.error('Transcriptie fout:', error);
+    });
+  } catch (error) {
+    console.error('Error refining summary:', error);
     
-    const errorMessage = error.error?.message || error.message || 'Audio transcriptie mislukt';
-    const statusCode = error.status || 500;
+    const errorMessage = error instanceof Error ? error.message : 'Onbekende fout bij het verfijnen van de samenvatting';
+    const statusCode = typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : 500;
     
     return NextResponse.json(
       { error: errorMessage },

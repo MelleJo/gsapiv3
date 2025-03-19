@@ -1,8 +1,7 @@
-// src/app/components/TranscriptionDisplay.tsx
 'use client';
 
 import { useState } from 'react';
-import { motion, MotionProps } from 'framer-motion';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
 import React, { HTMLAttributes, forwardRef } from 'react';
 
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -13,7 +12,7 @@ MotionDiv.displayName = 'MotionDiv';
 
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
   onClick?: () => void;
-  type?: "button" | "submit" | "reset"; // Added type property
+  type?: "button" | "submit" | "reset";
 };
 const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
   <motion.button ref={ref} {...props} />
@@ -29,6 +28,7 @@ interface TranscriptionDisplayProps {
 
 export default function TranscriptionDisplay({ text, isLoading, chunked, chunksCount }: TranscriptionDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false); // Added state for expansion
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(text);
@@ -67,6 +67,9 @@ export default function TranscriptionDisplay({ text, isLoading, chunked, chunksC
     tap: { scale: 0.95 }
   };
 
+  // Get a preview of the transcript (first 150 characters)
+  const previewText = text.length > 150 ? `${text.substring(0, 150)}...` : text;
+
   return (
     <MotionDiv 
       variants={containerVariants}
@@ -86,53 +89,130 @@ export default function TranscriptionDisplay({ text, isLoading, chunked, chunksC
             </div>
           )}
         </div>
-        <MotionButton 
-          variants={buttonVariants}
-          whileHover="hover"
-          whileTap="tap"
-          onClick={copyToClipboard}
-          className="text-gray-500 hover:text-blue-600 transition-colors p-2 rounded-full hover:bg-blue-50"
-          title="Kopiëren naar klembord"
-          type="button"
-        >
-          {copied ? (
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              className="w-5 h-5 text-green-600"
-            >
-              <path d="M20 6L9 17l-5-5"></path>
-            </svg>
-          ) : (
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              className="w-5 h-5"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          )}
-        </MotionButton>
+        <div className="flex items-center gap-2">
+          <MotionButton 
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            onClick={copyToClipboard}
+            className="text-gray-500 hover:text-blue-600 transition-colors p-2 rounded-full hover:bg-blue-50"
+            title="Kopiëren naar klembord"
+            type="button"
+          >
+            {copied ? (
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-5 h-5 text-green-600"
+              >
+                <path d="M20 6L9 17l-5-5"></path>
+              </svg>
+            ) : (
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-5 h-5"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            )}
+          </MotionButton>
+          <MotionButton
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-gray-500 hover:text-blue-600 transition-colors p-2 rounded-full hover:bg-blue-50"
+            title={isExpanded ? "Transcriptie verbergen" : "Transcriptie tonen"}
+            type="button"
+          >
+            {isExpanded ? (
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-5 h-5"
+              >
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            ) : (
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-5 h-5"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            )}
+          </MotionButton>
+        </div>
       </div>
       
-      <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-        {text.split('\n').map((paragraph, i) => (
-          <p key={i} className="mb-4 text-gray-700 leading-relaxed">
-            {paragraph}
-          </p>
-        ))}
-      </div>
+      {/* Preview text when collapsed */}
+      {!isExpanded && (
+        <div 
+          className="text-gray-700 text-sm bg-gray-50 p-4 rounded-lg mb-3 cursor-pointer"
+          onClick={() => setIsExpanded(true)}
+        >
+          {previewText}
+          <div className="text-blue-600 text-xs mt-2 flex items-center justify-center">
+            Klik om volledige transcriptie te zien
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="w-4 h-4 ml-1"
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+      )}
+      
+      {/* Full text when expanded */}
+      <AnimatePresence>
+        {isExpanded && (
+          <MotionDiv
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="overflow-hidden"
+          >
+            <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+              {text.split('\n').map((paragraph, i) => (
+                <p key={i} className="mb-4 text-gray-700 leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          </MotionDiv>
+        )}
+      </AnimatePresence>
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar {

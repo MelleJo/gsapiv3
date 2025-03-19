@@ -35,18 +35,28 @@ export function calculateEstimatedTime(
   const baseWordsCount = estimatedAudioMinutes * 500;
   const baseSummarizationTime = 10 + (baseWordsCount / 100);
 
+  // For a better user experience, let's cap the times to reasonable values
+  // and adjust them to be slightly more optimistic
+  const adjustedTimes = {
+    uploading: Math.min(300, baseUploadTime * 0.8), // Cap at 5 minutes
+    processing: Math.min(60, baseProcessingTime * 0.8), // Cap at 1 minute
+    chunking: Math.min(60, baseChunkingTime * 0.8), // Cap at 1 minute
+    transcribing: Math.min(600, baseTranscriptionTime * 0.8), // Cap at 10 minutes
+    summarizing: Math.min(120, baseSummarizationTime * 0.8), // Cap at 2 minutes
+  };
+
   // Return time based on current stage
   switch (stage) {
     case 'uploading':
-      return baseUploadTime;
+      return Math.round(adjustedTimes.uploading);
     case 'processing':
-      return baseProcessingTime;
+      return Math.round(adjustedTimes.processing);
     case 'chunking':
-      return baseChunkingTime;
+      return Math.round(adjustedTimes.chunking);
     case 'transcribing':
-      return baseTranscriptionTime;
+      return Math.round(adjustedTimes.transcribing);
     case 'summarizing':
-      return baseSummarizationTime;
+      return Math.round(adjustedTimes.summarizing);
     default:
       return 0;
   }

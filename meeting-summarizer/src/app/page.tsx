@@ -420,23 +420,44 @@ export default function Home() {
     showNotification('info', 'Verwerking geannuleerd');
   };
 
-  // Aangepaste functie voor het verwerken van Blob uploads
-  const handleBlobUpload = (blob: BlobFile) => {
-    setAudioBlob(blob);
-    setAudioFileName(blob.originalName);
-    
-    // Start the automated pipeline
-    startPipeline(blob);
-    
-    // Still update UI step for user feedback
-    setCurrentStep(2);
-    
-    // Scroll to transcribe section
-    setTimeout(() => {
-      const transcribeSection = document.getElementById('transcribe-section');
-      transcribeSection?.scrollIntoView({ behavior: 'smooth' });
-    }, 300);
-  };
+// Update these functions in page.tsx to ensure the pipeline starts immediately
+
+// Update FileUploader's handleStartProcess function to activate pipeline immediately
+const handleBlobUpload = (blob: BlobFile) => {
+  setAudioBlob(blob);
+  setAudioFileName(blob.originalName);
+  
+  // Activate pipeline FIRST, before any other operations
+  setPipelineActive(true);
+  setPipelineStartTime(Date.now());
+  setStageStartTime(Date.now());
+  
+  // Set initial pipeline status immediately when the file is selected
+  setPipelineStatus({
+    stage: 'uploading',
+    progress: 100, // Upload already complete at this point
+    message: `Bestand "${blob.originalName}" wordt verwerkt...`,
+    details: {
+      fileName: blob.originalName,
+      fileSize: blob.size,
+      totalChunks: estimateChunks(blob.size) > 1 ? estimateChunks(blob.size) : undefined
+    }
+  });
+  
+  // Update UI step
+  setCurrentStep(2);
+  
+  // Then start the pipeline processing with a very short delay
+  setTimeout(() => {
+    proceedToTranscription(blob);
+  }, 100); // Reduced from 1000ms to 100ms for faster response
+  
+  // Scroll to transcribe section
+  setTimeout(() => {
+    const transcribeSection = document.getElementById('transcribe-section');
+    transcribeSection?.scrollIntoView({ behavior: 'smooth' });
+  }, 300);
+};
   
   // Voor audio-opnames
   const handleAudioCapture = async (file: File) => {
