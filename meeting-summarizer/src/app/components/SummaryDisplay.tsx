@@ -25,6 +25,14 @@ interface SummaryDisplayProps {
   isLoading: boolean;
 }
 
+// Define types for sections
+type Section = {
+  type: 'section' | 'formatted' | 'paragraph';
+  content: string;
+  number?: string;
+  title?: string;
+};
+
 export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -35,11 +43,11 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   };
 
   // Process the summary text to properly render formatting
-  const processSummary = (text: string) => {
+  const processSummary = (text: string): Section[] => {
     if (!text) return [];
     
     // Split text into sections or paragraphs
-    let sections = [];
+    let sections: Section[] = [];
     
     // Check if the summary has numbered sections (like "1. **Title:**")
     const hasNumberedSections = /\d+\.\s+\*\*[^*]+\*\*/.test(text);
@@ -52,8 +60,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       const blocks = text.split(/\n\n+/);
       
       for (const block of blocks) {
-        // Check if this is a section header with asterisks
-        const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)(.*)$/s);
+        // Check if this is a section header with asterisks - without using /s flag
+        const sectionMatch = block.match(/^(\d+\.\s+)?(\*\*([^*]+)\*\*)([^]*?)$/);
         
         if (sectionMatch) {
           const [, number, , title, content] = sectionMatch;
@@ -61,7 +69,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           sections.push({
             type: 'section',
             number: number || '',
-            title: title,
+            title: title || '', // Ensure title is never undefined
             content: content.trim()
           });
         } else if (block.includes('**')) {
@@ -201,7 +209,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
               <div key={index} className="mb-4">
                 <h3 className="text-lg font-semibold text-blue-700 mt-4 mb-2 pb-1 border-b border-blue-200">
                   {section.number && <span className="mr-1">{section.number}</span>}
-                  {section.title.replace(/\*\*/g, '')}
+                  {/* Fixed type safety issue here */}
+                  {section.title ? section.title.replace(/\*\*/g, '') : ''}
                 </h3>
                 <p className="text-gray-700 leading-relaxed">
                   {section.content}
