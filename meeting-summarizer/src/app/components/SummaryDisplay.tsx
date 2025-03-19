@@ -115,9 +115,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           });
         }
       } 
-      // Check if this is a section header with asterisks
+      // Check if this is a section header with asterisks - avoid using /s flag
       else if (block.match(/^(\d+\.\s+)?([A-Z][^.]+):/)) {
-        const sectionMatch = block.match(/^(\d+\.\s+)?([A-Z][^:]+):(.*)$/s);
+        // Use [^]* instead of .* with /s flag to match any character including newlines
+        const sectionMatch = block.match(/^(\d+\.\s+)?([A-Z][^:]+):([^]*?)$/);
         
         if (sectionMatch) {
           const [, number, title, content] = sectionMatch;
