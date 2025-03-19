@@ -58,6 +58,13 @@ export default function Home() {
   // Cost tracking
   const [transcriptionCost, setTranscriptionCost] = useState<number>(0);
   const [summaryCost, setSummaryCost] = useState<number>(0);
+  const [transcriptionInfo, setTranscriptionInfo] = useState<{
+    chunked: boolean;
+    chunks: number;
+  }>({
+    chunked: false,
+    chunks: 1
+  });
   
   // Settings
   const [settings, setSettings] = useState({
@@ -147,6 +154,14 @@ export default function Home() {
         setTranscriptionCost(data.usage.estimatedCost);
       }
       
+      // Update chunking information if available
+      if (data.usage?.chunked !== undefined) {
+        setTranscriptionInfo({
+          chunked: data.usage.chunked,
+          chunks: data.usage.chunks || 1
+        });
+      }
+      
       // Auto-advance to next step
       setCurrentStep(3);
       
@@ -211,6 +226,13 @@ export default function Home() {
   // Handle transcription with Blob URL from button click
   const handleTranscribe = async () => {
     if (!audioBlob) return;
+    
+    // Check for large file sizes and warn
+    const fileSizeMB = audioBlob.size / (1024 * 1024);
+    if (fileSizeMB > 25) {
+      showNotification('warning', `Let op: Bestand (${fileSizeMB.toFixed(1)}MB) is groter dan 25MB, wat mogelijk problemen kan veroorzaken bij transcriptie. Overweeg een kleiner bestand te gebruiken voor betere resultaten.`);
+    }
+    
     await transcribeAudio(audioBlob);
   };
 
@@ -667,7 +689,12 @@ export default function Home() {
                   </div>
                 </div>
                 
-                <TranscriptionDisplay text={transcription} isLoading={isTranscribing} />
+                <TranscriptionDisplay 
+                  text={transcription} 
+                  isLoading={isTranscribing}
+                  chunked={transcriptionInfo.chunked}
+                  chunksCount={transcriptionInfo.chunks}
+                />
               </MotionDiv>
             )}
           </AnimatePresence>

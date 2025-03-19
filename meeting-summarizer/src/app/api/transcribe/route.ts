@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
-import { Readable } from 'stream';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
+import { MAX_CHUNK_SIZE, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 300 // 10 minutes max execution time
+  maxDuration: 900, // 15 minutes max execution time (increased for chunking)
+  api: {
+    bodyParser: {
+      sizeLimit: '500mb', // Increased from default for large files
+    },
+    responseLimit: false, // No size limit for responses
+  }
 };
 
 // Configure timeout for fetch operations
@@ -29,7 +35,6 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
     clearTimeout(timeoutHandle);
   }) as Promise<T>;
 };
-
 
 // Helper function to add retry logic
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000, timeoutMs = FETCH_TIMEOUT): Promise<T> {
@@ -102,8 +107,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Estimate duration and cost
+    // File size and chunking notification
     const fileSizeMB = fileSize / (1024 * 1024);
+    const needsChunking = fileSize > MAX_CHUNK_SIZE;
+    
+    // Calculate chunks for cost estimation
+    const numChunks = needsChunking ? Math.ceil(fileSize / MAX_CHUNK_SIZE) : 1;
+    
+    // Estimate duration and cost
     const estimatedDurationMinutes = estimateAudioDuration(fileSize);
     const selectedModel = whisperModels.find(m => m.id === modelId) || whisperModels[0];
     const estimatedCost = calculateTranscriptionCost(
@@ -111,105 +122,112 @@ export async function POST(request: Request) {
       selectedModel.costPerMinute
     );
 
-    console.log(`Verwerken van bestand via Blob URL. Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
+    console.log(`Verwerken van bestand: ${originalFileName}, Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
+    if (needsChunking) {
+      console.log(`Bestand wordt opgesplitst in ${numChunks} delen vanwege grootte > 25MB`);
+    }
 
-    // OpenAI ondersteunt het verwerken van bestanden via URL
+    // Process the audio file
     try {
-      const transcription = await withRetry(async () => {
-        let fileToUpload;
-        const isVideo = contentType.startsWith("video/");
-        const mimeTypes = {
-          flac: 'audio/flac',
-          m4a: 'audio/x-m4a',
-          mp3: 'audio/mpeg',
-          mp4: isVideo ? 'video/mp4' : 'audio/mp4',
-          mpeg: 'audio/mpeg',
-          mpga: 'audio/mpeg',
-          oga: 'audio/ogg',
-          ogg: 'audio/ogg',
-          wav: 'audio/wav',
-          webm: 'audio/webm'
-        };
-        const mimeType = mimeTypes[fileExt as keyof typeof mimeTypes] || 'application/octet-stream';
-
-        if (typeof blobUrl === "string") {
-          // Add timeout to fetch operation
-          const fetchWithTimeout = () => withTimeout(
-            fetch(blobUrl), 
-            FETCH_TIMEOUT, 
-            'Tijdslimiet overschreden bij ophalen van audiobestand. Probeer het opnieuw.'
-          );
-          
-          const resp = await fetchWithTimeout();
-          if (!resp.ok) {
-            throw new Error(`Fout bij ophalen van audiobestand: ${resp.status} ${resp.statusText}`);
-          }
-          
-          // Get the blob directly instead of working with arrayBuffer
-          const blob = await resp.blob();
-          const chunks = [];
-          const reader = blob.stream().getReader();
-          
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-          }
-          
-          // Convert to File directly from the blob
-          fileToUpload = new File([blob], originalFileName, { 
-            type: mimeType, 
-            lastModified: Date.now() 
-          });
-        } else {
-          // When we already have a blob, use it directly
-          fileToUpload = new File([blobUrl], originalFileName, { 
-            type: mimeType, 
-            lastModified: Date.now() 
-          });
+      // Define mappings for correct MIME types
+      const isVideo = contentType.startsWith("video/");
+      const mimeTypes = {
+        flac: 'audio/flac',
+        m4a: 'audio/x-m4a',
+        mp3: 'audio/mpeg',
+        mp4: isVideo ? 'video/mp4' : 'audio/mp4',
+        mpeg: 'audio/mpeg',
+        mpga: 'audio/mpeg',
+        oga: 'audio/ogg',
+        ogg: 'audio/ogg',
+        wav: 'audio/wav',
+        webm: 'audio/webm'
+      };
+      const mimeType = mimeTypes[fileExt as keyof typeof mimeTypes] || 'application/octet-stream';
+      
+      // Get the audio blob from the URL if needed
+      let audioBlob: Blob;
+      if (typeof blobUrl === "string") {
+        const fetchWithTimeout = () => withTimeout(
+          fetch(blobUrl), 
+          FETCH_TIMEOUT, 
+          'Tijdslimiet overschreden bij ophalen van audiobestand. Probeer het opnieuw.'
+        );
+        
+        const resp = await fetchWithTimeout();
+        if (!resp.ok) {
+          throw new Error(`Fout bij ophalen van audiobestand: ${resp.status} ${resp.statusText}`);
         }
         
-        console.log(`Transcriptie aanvraag verzenden naar OpenAI API voor bestand: ${originalFileName}`);
-        
-        // Add timeout to OpenAI API call - longer timeout for transcription
-        return await withTimeout(
-          openai.audio.transcriptions.create({
-            file: fileToUpload as any,
-            model: modelId,
-            language: 'nl',
-            response_format: 'text',
-          }),
-          300000, // 5 minute timeout for OpenAI API call
-          'Tijdslimiet overschreden bij het transcriberen. De OpenAI API heeft mogelijk meer tijd nodig voor dit bestand.'
-        );
-      }, 3, 2000);
+        audioBlob = await resp.blob();
+      } else {
+        audioBlob = blobUrl;
+      }
+      
+      // Split audio into chunks if necessary
+      const audioChunks = await splitAudioBlob(audioBlob);
+      
+      // Process each chunk and combine results
+      const transcription = await processChunks<string>(
+        audioChunks,
+        async (chunk, index) => {
+          console.log(`Verwerken van deel ${index + 1}/${audioChunks.length}, grootte: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
+          
+          // Create a File object for OpenAI API
+          const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
+          const fileToUpload = new File([chunk], chunkFileName, { 
+            type: mimeType, 
+            lastModified: Date.now() 
+          });
+          
+          // Process with OpenAI Whisper
+          return await withTimeout(
+            openai.audio.transcriptions.create({
+              file: fileToUpload as any,
+              model: modelId,
+              language: 'nl',
+              response_format: 'text',
+            }),
+            300000, // 5 minute timeout per chunk
+            `Tijdslimiet overschreden bij het transcriberen van deel ${index + 1}/${audioChunks.length}.`
+          );
+        },
+        // Combine function
+        joinTranscriptions
+      );
 
       return NextResponse.json({ 
         transcription: transcription,
         usage: {
           model: selectedModel.name,
           estimatedDurationMinutes,
-          estimatedCost
+          estimatedCost,
+          chunked: needsChunking,
+          chunks: audioChunks.length
         }
       });
     } catch (openaiError: any) {
-      console.error('OpenAI API fout bij het verwerken van Blob URL:', openaiError);
+      console.error('OpenAI API fout bij het verwerken van audio:', openaiError);
       
       let errorMessage = 'OpenAI API fout';
       let statusCode = 500;
       
-      // Error handling voor specifieke foutscenario's
-      if (openaiError.message?.includes('file_url')) {
-        errorMessage = 'Probleem met de audio URL. Controleer of de URL toegankelijk is voor OpenAI.';
-      } else if (openaiError.status === 413 || (openaiError.message && openaiError.message.includes('too large'))) {
-        errorMessage = 'Audio bestand te groot voor verwerking door OpenAI. De maximale grootte voor OpenAI is ongeveer 25MB.';
+      // Improved error handling
+      if (openaiError.status === 413 || 
+          (openaiError.message && (openaiError.message.includes('413') || openaiError.message.includes('too large')))) {
+        errorMessage = `Fout bij verwerken van audiobestand. Mogelijk is een van de delen nog te groot.`;
         statusCode = 413;
+      } else if (openaiError.message?.includes('file_url')) {
+        errorMessage = 'Probleem met de audio URL. Controleer of de URL toegankelijk is voor OpenAI.';
       } else if (openaiError.status === 429) {
         errorMessage = 'API limiet bereikt. Probeer het over enkele ogenblikken opnieuw.';
         statusCode = 429;
       } else if (openaiError.status === 401) {
         errorMessage = 'Authenticatiefout. Controleer uw OpenAI API-sleutel.';
         statusCode = 401;
+      } else if (openaiError.message && openaiError.message.includes('Tijdslimiet')) {
+        errorMessage = openaiError.message;
+        statusCode = 408; // Request Timeout
       } else if (openaiError.message) {
         errorMessage = `OpenAI Transcriptie fout: ${openaiError.message}`;
       }
@@ -222,8 +240,17 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Transcriptie fout:', error);
     
-    const errorMessage = error.error?.message || error.message || 'Audio transcriptie mislukt';
-    const statusCode = error.status || 500;
+    // More specific error handling
+    let errorMessage = error.error?.message || error.message || 'Audio transcriptie mislukt';
+    let statusCode = error.status || 500;
+    
+    // Handle specific errors
+    if (statusCode === 413 || errorMessage.includes('413') || errorMessage.includes('too large')) {
+      errorMessage = 'Fout bij verwerken van audiobestand. Mogelijk is een van de delen nog te groot.';
+      statusCode = 413;
+    } else if (errorMessage.includes('Tijdslimiet')) {
+      statusCode = 408; // Request Timeout
+    }
     
     return NextResponse.json(
       { error: errorMessage },

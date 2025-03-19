@@ -16,6 +16,14 @@ const nextConfig = {
   },
   // Ensure CSS processing is enabled
   reactStrictMode: true,
+  
+  // Increase API body size limits
+  api: {
+    bodyParser: {
+      sizeLimit: '100mb', // Increased from default 1mb
+    },
+    responseLimit: '100mb',
+  },
 };
 
 module.exports = nextConfig;

@@ -23,9 +23,11 @@ MotionButton.displayName = 'MotionButton';
 interface TranscriptionDisplayProps {
   text: string;
   isLoading: boolean;
+  chunked?: boolean;
+  chunksCount?: number;
 }
 
-export default function TranscriptionDisplay({ text, isLoading }: TranscriptionDisplayProps) {
+export default function TranscriptionDisplay({ text, isLoading, chunked, chunksCount }: TranscriptionDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
 
   const copyToClipboard = () => {
@@ -73,7 +75,17 @@ export default function TranscriptionDisplay({ text, isLoading }: TranscriptionD
       className="bg-white rounded-2xl shadow-lg p-6"
     >
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">Transcriptie</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold text-gray-800">Transcriptie</h2>
+          {chunked && chunksCount && chunksCount > 1 && (
+            <div className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+              </svg>
+              Verwerkt in {chunksCount} delen
+            </div>
+          )}
+        </div>
         <MotionButton 
           variants={buttonVariants}
           whileHover="hover"
