@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
-import { MAX_CHUNK_SIZE, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
+import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
 
 export const config = {
   runtime: 'nodejs',
@@ -109,10 +109,10 @@ export async function POST(request: Request) {
 
     // File size and chunking notification
     const fileSizeMB = fileSize / (1024 * 1024);
-    const needsChunking = fileSize > MAX_CHUNK_SIZE;
+const needsChunking = fileSize > SIZE_LIMIT;
     
     // Calculate chunks for cost estimation
-    const numChunks = needsChunking ? Math.ceil(fileSize / MAX_CHUNK_SIZE) : 1;
+const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
     
     // Estimate duration and cost
     const estimatedDurationMinutes = estimateAudioDuration(fileSize);
