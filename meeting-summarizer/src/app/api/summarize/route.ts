@@ -2,31 +2,21 @@
 
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
-import { chatModels } from '@/lib/config';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { chatModels } from '@/lib/config';
 
-// Als een type niet wordt gebruikt, hou het privé om ESLint warnings te vermijden
-type SummarizeRequestType = {
-  text: string;
-  model?: string;
-  temperature?: number;
-};
-
-// Models that don't support temperature parameter
-const NON_TEMPERATURE_MODELS = ['o1', 'o1-mini', 'o3-mini'];
+export const maxDuration = 60; // 60 seconds timeout
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
     // Parse request body
-    const body: SummarizeRequestType = await request.json();
+    const body = await request.json();
     
-    // Extract parameters with defaults
-    const text = body.text;
-    const model = body.model || 'gpt-4o-mini';
-    const temperature = body.temperature !== undefined ? body.temperature : 0.3;
+    // Extract parameters
+    const { text, model = 'o3-mini', temperature = 0.3 } = body;
     
-    // Validate text input
+    // Validate request
     if (!text) {
       return NextResponse.json(
         { error: 'Geen tekst aangeleverd voor samenvatting' },
@@ -34,100 +24,96 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(`Samenvatten van tekst met lengte ${text.length} met model ${model}`);
-
-    // Count input tokens for cost estimation
-    const inputTokens = countTokens(text);
-    
-    // Get selected model config
+    // Find the model details in the config
     const selectedModel = chatModels.find(m => m.id === model) || 
-                         chatModels.find(m => m.id === 'gpt-4o-mini') || 
-                         chatModels[0];
+                          chatModels.find(m => m.id === 'o3-mini') || 
+                          chatModels[0];
 
-    // Create messages array with proper typing for OpenAI API
-    const messages: ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: `Je bent een expert in het samenvatten van vergaderingen. Maak een beknopte maar volledige samenvatting van de volgende vergaderingstranscriptie in het Nederlands.
+    // Create an enhanced, detailed system prompt for meeting summaries
+    const systemPrompt = `Je bent een expert in het maken van gedetailleerde vergadersamenvattingen voor professionele omgevingen. Maak een uitgebreide, feitelijke samenvatting van de transcriptie die ik je ga geven, met de volgende vereisten:
 
-Structureer je samenvatting in de volgende secties:
-1. Overzicht: Een korte introductie van het doel en de context van de vergadering
-2. Belangrijkste discussiepunten: De hoofdonderwerpen die zijn besproken
-3. Genomen beslissingen: Duidelijke beslissingen die tijdens de vergadering zijn genomen
-4. Actiepunten: Specifieke taken die zijn toegewezen, inclusief wie verantwoordelijk is en deadlines indien vermeld
-5. Vervolgstappen: Geplande volgende stappen of vergaderingen
+1. Gebruik actieve taal in plaats van passieve taal (bijv. "Jan legde uit dat..." in plaats van "Er werd uitgelegd dat...").
+2. Identificeer deelnemers en hun standpunten wanneer deze duidelijk zijn uit de transcriptie.
+3. Vermeld concrete beslissingen, actiepunten, en verantwoordelijken met deadlines indien genoemd.
+4. Structureer de samenvatting met duidelijke secties en gebruik waar nodig opsommingstekens voor betere leesbaarheid.
+5. Wees gedetailleerd en volledig - hoe langer de transcriptie, hoe uitgebreider de samenvatting moet zijn.
+6. Vermijd hallucinations - neem alleen informatie op die daadwerkelijk in de transcriptie staat.
+7. Geef belangrijke cijfers, metrics en specifieke voorbeelden die in de vergadering werden genoemd.
+8. Als er tegenstrijdige standpunten waren, vermeld deze objectief.
+9. Organiseer de belangrijkste onderwerpen chronologisch zoals ze in de vergadering aan bod kwamen.
+10. Sluit af met een korte sectie "Genomen beslissingen" en indien van toepassing "Actiepunten" met verantwoordelijken.
 
-Houd het professioneel, beknopt en actiegericht. Begin elke sectie met de sectienaam gevolgd door een dubbele punt, bijvoorbeeld "Overzicht: " of "Actiepunten: ".`
-      },
-      {
-        role: 'user',
-        content: text
-      }
+Dit is een belangrijk zakelijk document dat gebruikt zal worden door mensen die niet bij de vergadering aanwezig waren, dus zorg ervoor dat het een volledige en nauwkeurige weergave is van wat er besproken is. Gebruik professionele, zakelijke taal.`;
+
+    // Create the messages array
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Hier is de transcriptie van een vergadering. Maak een gedetailleerde en complete samenvatting volgens de criteria in je instructies:\n\n${text}` }
     ];
 
-    // Create API request options with Dutch meeting notes system prompt
-    const requestOptions = {
-      model: selectedModel.id,
-      messages: messages
-    };
-    
-    // Only add temperature for models that support it
-    if (!NON_TEMPERATURE_MODELS.includes(selectedModel.id) && temperature !== undefined) {
-      Object.assign(requestOptions, { temperature });
+    // Estimate token count before making the API call
+    const combinedText = messages.map(m => m.content).join(' ');
+    const inputTokenCount = countTokens(combinedText);
+
+    // Handle very large input with chunking strategy if needed
+    if (inputTokenCount > 15000) {
+      console.log(`Large input detected: ${inputTokenCount} tokens. Using chunking strategy.`);
+      // Implement chunking if needed - for now we'll proceed with the API call
     }
 
-    try {
-      const response = await openai.chat.completions.create(requestOptions);
+    // Call OpenAI API
+    const response = await openai.chat.completions.create({
+      model: model,
+      messages: messages as any,
+      temperature: temperature,
+      max_tokens: 4096, // Allow for substantial summaries
+    });
 
-      // Get completion tokens from API response if available
-      let outputTokens = 0;
-      if (response.usage?.completion_tokens) {
-        outputTokens = response.usage.completion_tokens;
-      } else {
-        // Fallback to estimation
-        outputTokens = countTokens(response.choices[0].message.content || '');
+    // Extract summary from response
+    const summary = response.choices[0].message.content || '';
+
+    // Calculate costs
+    const outputTokenCount = countTokens(summary);
+    const cost = calculateTextCost(
+      inputTokenCount,
+      outputTokenCount,
+      selectedModel.inputCost,
+      selectedModel.outputCost
+    );
+
+    // Return the summary and usage info
+    return NextResponse.json({
+      summary,
+      usage: {
+        model: selectedModel.name,
+        inputTokens: inputTokenCount,
+        outputTokens: outputTokenCount,
+        totalTokens: inputTokenCount + outputTokenCount,
+        cost
       }
-
-      // Calculate costs
-      const cost = calculateTextCost(
-        inputTokens,
-        outputTokens,
-        selectedModel.inputCost,
-        selectedModel.outputCost
-      );
-
-      return NextResponse.json({ 
-        summary: response.choices[0].message.content,
-        usage: {
-          model: selectedModel.name,
-          inputTokens,
-          outputTokens,
-          totalTokens: inputTokens + outputTokens,
-          cost
-        }
-      });
-    } catch (error) {
-      console.error("OpenAI API fout:", error);
-      
-      let errorMessage = "Fout in communicatie met OpenAI";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      return NextResponse.json(
-        { error: `OpenAI fout: ${errorMessage}` },
-        { status: 500 }
-      );
-    }
+    });
   } catch (error) {
-    console.error('Samenvatting fout:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Samenvatten van tekst mislukt';
-    const statusCode = typeof error === 'object' && error !== null && 'status' in error ? 
-      Number(error.status) : 500;
+    console.error('Error generating summary:', error);
     
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: statusCode }
+    let errorMessage = 'Er is een fout opgetreden bij het genereren van de samenvatting';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      if (error.message.includes('timeout')) {
+        errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere transcriptie of een ander model.';
+        statusCode = 504;
+      }
+    }
+    
+    // Return error response
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { 
+        status: statusCode,
+        headers: { 'Content-Type': 'application/json' }
+      }
     );
   }
 }

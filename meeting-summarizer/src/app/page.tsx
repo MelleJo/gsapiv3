@@ -671,6 +671,61 @@ const handleBlobUpload = (blob: BlobFile) => {
     }));
   };
 
+  const handleRegenerateSummary = () => {
+    if (!transcription || transcription.trim() === '') {
+      showNotification('error', 'Transcriptie is leeg of ontbreekt');
+      return;
+    }
+    
+    // Use the pipeline for summarization
+    const now = Date.now();
+    setPipelineStartTime(now);
+    setStageStartTime(now);
+    
+    setPipelineStatus({
+      stage: 'summarizing',
+      progress: 0,
+      message: getInitialStageMessage('summarizing'),
+      estimatedTimeLeft: calculateEstimatedTime(transcription.length * 2, 'summarizing'),
+      details: {
+        fileName: audioFileName
+      }
+    });
+    
+    setPipelineActive(true);
+    
+    // Start summarization process
+    summarizeWithProgress(transcription);
+  };
+
+  const handleRegenerateTranscript = async () => {
+    if (!audioBlob) {
+      showNotification('error', 'Audio bestand is niet beschikbaar');
+      return;
+    }
+    
+    // Start the pipeline for transcription
+    const now = Date.now();
+    setPipelineStartTime(now);
+    setStageStartTime(now);
+    
+    setPipelineStatus({
+      stage: 'transcribing',
+      progress: 0,
+      message: getInitialStageMessage('transcribing'),
+      estimatedTimeLeft: calculateEstimatedTime(audioBlob.size, 'transcribing', settings.transcriptionModel),
+      details: {
+        fileName: audioFileName,
+        fileSize: audioBlob.size
+      }
+    });
+    
+    setPipelineActive(true);
+    
+    // Start transcription process
+    transcribeAudioWithProgress(audioBlob);
+  };
+
   // Card variants for animations
   const cardVariants = {
     hidden: { opacity: 0, y: 50 },
@@ -1045,11 +1100,14 @@ const handleBlobUpload = (blob: BlobFile) => {
                     transcription={transcription}
                     audioFileName={audioFileName}
                     isSummarizing={isSummarizing}
+                    isTranscribing={isTranscribing}
                     transcriptionInfo={transcriptionInfo}
                     onRefinedSummary={handleRefinedSummary}
                     onOpenEmailModal={handleOpenEmailModal}
                     onReset={handleReset}
                     onToggleSettings={toggleSettings}
+                    onRegenerateSummary={handleRegenerateSummary}
+                    onRegenerateTranscript={handleRegenerateTranscript}
                   />
                 ) : (
                   // Show the original UI when generating summary
@@ -1103,7 +1161,7 @@ const handleBlobUpload = (blob: BlobFile) => {
                   </div>
                 )}
                 
-                {isSummarizing && (
+                {isSummarizing && !summary && (
                   <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
                     <div className="flex items-center mb-4">
                       <div className="animate-pulse mr-3">
