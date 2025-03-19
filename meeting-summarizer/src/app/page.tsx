@@ -6,6 +6,7 @@ import React, { HTMLAttributes, forwardRef } from 'react';
 import FileUploader from '@/app/components/FileUploader';
 import CustomAudioRecorder from '@/app/components/CustomAudioRecorder';
 import TranscriptionDisplay from '@/app/components/TranscriptionDisplay';
+import TranscriptionProgress from '@/app/components/TranscriptionProgress';
 import SummaryDisplay from '@/app/components/SummaryDisplay';
 import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
@@ -54,6 +55,7 @@ export default function Home() {
   // Loading states
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [transcriptionPhase, setTranscriptionPhase] = useState<'uploading' | 'processing' | 'transcribing' | 'complete'>('uploading');
   
   // Cost tracking
   const [transcriptionCost, setTranscriptionCost] = useState<number>(0);
@@ -233,7 +235,75 @@ export default function Home() {
       showNotification('warning', `Let op: Bestand (${fileSizeMB.toFixed(1)}MB) is groter dan 25MB, wat mogelijk problemen kan veroorzaken bij transcriptie. Overweeg een kleiner bestand te gebruiken voor betere resultaten.`);
     }
     
-    await transcribeAudio(audioBlob);
+    setTranscriptionPhase('uploading');
+    setIsTranscribing(true);
+    
+    try {
+      setTranscriptionPhase('processing');
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          blobUrl: audioBlob.url,
+          originalFileName: audioBlob.originalName,
+          fileType: audioBlob.contentType,
+          fileSize: audioBlob.size,
+          model: settings.transcriptionModel
+        })
+      });
+      
+      setTranscriptionPhase('transcribing');
+      
+      if (!response.ok) {
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Transcriptie mislukt');
+        } catch {
+          throw new Error(`Transcriptie mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
+        }
+      }
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
+      }
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setTranscription(data.transcription);
+      if (data.usage?.estimatedCost) {
+        setTranscriptionCost(data.usage.estimatedCost);
+      }
+      
+      if (data.usage?.chunked !== undefined) {
+        setTranscriptionInfo({
+          chunked: data.usage.chunked,
+          chunks: data.usage.chunks || 1
+        });
+      }
+      
+      setTranscriptionPhase('complete');
+      setCurrentStep(3);
+      
+      setTimeout(() => {
+        const summarySection = document.getElementById('summary-section');
+        summarySection?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    } catch (error) {
+      console.error('Transcriptie fout:', error);
+      showNotification('error', `Fout tijdens transcriptie: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
+    } finally {
+      setTimeout(() => {
+        setIsTranscribing(false);
+      }, 1000);
+    }
   };
 
   // Handle summarization
@@ -689,6 +759,13 @@ export default function Home() {
                   </div>
                 </div>
                 
+                <TranscriptionProgress 
+                  isActive={isTranscribing}
+                  currentPhase={transcriptionPhase}
+                  progress={0}
+                  fileSize={audioBlob?.size || 0}
+                  fileName={audioFileName || ''}
+                />
                 <TranscriptionDisplay 
                   text={transcription} 
                   isLoading={isTranscribing}
