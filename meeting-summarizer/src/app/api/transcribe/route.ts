@@ -1,3 +1,5 @@
+// src/app/api/transcribe/route.ts
+
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
@@ -6,13 +8,7 @@ import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 300, // 15 minutes max execution time (increased for chunking)
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb', // Increased from default for large files
-    },
-    responseLimit: false, // No size limit for responses
-  }
+  maxDuration: 300, // 5 minutes max execution time
 };
 
 // Configure timeout for fetch operations
@@ -37,7 +33,7 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 };
 
 // Helper function to add retry logic
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000, timeoutMs = FETCH_TIMEOUT): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
   let lastError: any;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -45,7 +41,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000, 
       return await fn();
     } catch (error: any) {
       lastError = error;
-      console.log(`Poging ${attempt} mislukt. ${attempt < maxRetries ? 'Opnieuw proberen...' : 'Opgegeven.'}`);
+      console.log(`Attempt ${attempt} failed. ${attempt < maxRetries ? 'Retrying...' : 'Giving up.'}`);
       
       // If this is not the last attempt, wait before retrying
       if (attempt < maxRetries) {
@@ -59,39 +55,18 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000, 
 
 export async function POST(request: Request) {
   try {
-    const contentType = request.headers.get("content-type") || "";
-    let body: any;
-    if (contentType.includes("application/json")) {
-      try {
-        body = await request.json();
-      } catch (err) {
-        body = { file: await request.clone().blob(), originalFileName: 'audio.wav' };
-      }
-    } else if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
-      const fileField = formData.get("file");
-      if (!fileField) {
-        return NextResponse.json({ error: "Geen audio bestand aangeleverd" }, { status: 400 });
-      }
-      body = {
-        file: fileField,
-        originalFileName: fileField instanceof File ? fileField.name : "audio.mp3"
-      };
-    } else if (contentType.startsWith("audio/") || contentType.startsWith("video/")) {
-      const blob = await request.blob();
-      body = { file: blob, originalFileName: contentType.startsWith("video/") ? 'video.mp4' : 'audio.wav' };
-    } else {
-      return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
-    }
-
-    const blobUrl = body.blobUrl || body.file;
+    const body = await request.json();
+    
+    // Parameters for Blob URL processing
+    const blobUrl = body.blobUrl;
     const originalFileName = body.originalFileName || 'audio.mp3';
-    const fileSize = body.file && body.file instanceof File ? body.file.size : (body.fileSize || 0);
+    const fileType = body.fileType || 'audio/mpeg';
+    const fileSize = body.fileSize || 0;
     const modelId = body.model || 'whisper-1';
     
     if (!blobUrl) {
       return NextResponse.json(
-        { error: 'Geen audio URL aangeleverd' },
+        { error: 'No audio URL provided' },
         { status: 400 }
       );
     }
@@ -102,17 +77,17 @@ export async function POST(request: Request) {
     
     if (!fileExt || !validExtensions.includes(fileExt)) {
       return NextResponse.json(
-        { error: `Ongeldig bestandsformaat. Ondersteunde formaten: ${validExtensions.join(', ')}` },
+        { error: `Invalid file format. Supported formats: ${validExtensions.join(', ')}` },
         { status: 400 }
       );
     }
 
     // File size and chunking notification
     const fileSizeMB = fileSize / (1024 * 1024);
-const needsChunking = fileSize > SIZE_LIMIT;
+    const needsChunking = fileSize > SIZE_LIMIT;
     
     // Calculate chunks for cost estimation
-const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
+    const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
     
     // Estimate duration and cost
     const estimatedDurationMinutes = estimateAudioDuration(fileSize);
@@ -122,82 +97,84 @@ const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
       selectedModel.costPerMinute
     );
 
-    console.log(`Verwerken van bestand: ${originalFileName}, Grootte: ${fileSizeMB.toFixed(2)}MB, Geschatte duur: ${estimatedDurationMinutes.toFixed(2)} minuten`);
+    console.log(`Processing file: ${originalFileName}, Size: ${fileSizeMB.toFixed(2)}MB, Estimated duration: ${estimatedDurationMinutes.toFixed(2)} minutes`);
     if (needsChunking) {
-      console.log(`Bestand wordt opgesplitst in ${numChunks} delen vanwege grootte > 25MB`);
+      console.log(`File will be split into approximately ${numChunks} chunks due to size > ${SIZE_LIMIT / (1024 * 1024)}MB`);
     }
 
-    // Process the audio file
     try {
-      // Define mappings for correct MIME types
-      const isVideo = contentType.startsWith("video/");
-      const mimeTypes = {
-        flac: 'audio/flac',
-        m4a: 'audio/x-m4a',
-        mp3: 'audio/mpeg',
-        mp4: isVideo ? 'video/mp4' : 'audio/mp4',
-        mpeg: 'audio/mpeg',
-        mpga: 'audio/mpeg',
-        oga: 'audio/ogg',
-        ogg: 'audio/ogg',
-        wav: 'audio/wav',
-        webm: 'audio/webm'
-      };
-      const mimeType = mimeTypes[fileExt as keyof typeof mimeTypes] || 'application/octet-stream';
+      // First, fetch the audio blob from the URL
+      const audioResponse = await withTimeout(
+        fetch(blobUrl), 
+        FETCH_TIMEOUT, 
+        'Timeout exceeded while fetching audio file. Please try again.'
+      );
       
-      // Get the audio blob from the URL if needed
-      let audioBlob: Blob;
-      if (typeof blobUrl === "string") {
-        const fetchWithTimeout = () => withTimeout(
-          fetch(blobUrl), 
-          FETCH_TIMEOUT, 
-          'Tijdslimiet overschreden bij ophalen van audiobestand. Probeer het opnieuw.'
-        );
-        
-        const resp = await fetchWithTimeout();
-        if (!resp.ok) {
-          throw new Error(`Fout bij ophalen van audiobestand: ${resp.status} ${resp.statusText}`);
-        }
-        
-        audioBlob = await resp.blob();
-      } else {
-        audioBlob = blobUrl;
+      if (!audioResponse.ok) {
+        throw new Error(`Error fetching audio file: ${audioResponse.status} ${audioResponse.statusText}`);
       }
       
-      // Split audio into chunks if necessary
+      const audioBlob = await audioResponse.blob();
+      
+      // Determine appropriate MIME type
+      const mimeType = fileType || audioBlob.type || `audio/${fileExt}`;
+      
+      console.log(`Audio blob fetched. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${mimeType}`);
+      
+      // Split audio into chunks
+      console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
       const audioChunks = await splitAudioBlob(audioBlob);
+      console.log(`Split complete. Created ${audioChunks.length} chunks.`);
       
       // Process each chunk and combine results
       const transcription = await processChunks<string>(
         audioChunks,
         async (chunk, index) => {
-          console.log(`Verwerken van deel ${index + 1}/${audioChunks.length}, grootte: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
+          console.log(`Processing chunk ${index + 1}/${audioChunks.length}, size: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
           
-          // Create a File object for OpenAI API
-          const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
-          const fileToUpload = new File([chunk], chunkFileName, { 
-            type: mimeType, 
-            lastModified: Date.now() 
-          });
-          
-          // Process with OpenAI Whisper
-          return await withTimeout(
-            openai.audio.transcriptions.create({
-              file: fileToUpload as any,
-              model: modelId,
-              language: 'nl',
-              response_format: 'text',
-            }),
-            300000, // 5 minute timeout per chunk
-            `Tijdslimiet overschreden bij het transcriberen van deel ${index + 1}/${audioChunks.length}.`
-          );
+          try {
+            // Create a valid File object for OpenAI API
+            const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
+            const fileObject = new File([chunk], chunkFileName, { 
+              type: mimeType,
+              lastModified: Date.now()
+            });
+            
+            // For debugging, log the created file object
+            console.log(`Created File object: name=${fileObject.name}, size=${fileObject.size}, type=${fileObject.type}`);
+            
+            // Process with OpenAI Whisper with proper error handling
+            const result = await withRetry(async () => {
+              return await openai.audio.transcriptions.create({
+                file: fileObject,
+                model: modelId,
+                language: 'nl',
+                response_format: 'text',
+              });
+            }, 2, 2000);
+            
+            console.log(`Successfully transcribed chunk ${index + 1}/${audioChunks.length}`);
+            return result;
+          } catch (error: any) {
+            console.error(`Error processing chunk ${index + 1}/${audioChunks.length}:`, error);
+            
+            // Provide more detailed error information
+            const errorMessage = error.message || 'Unknown error';
+            const statusCode = error.status || 500;
+            throw new Error(`Failed to process chunk ${index + 1}/${audioChunks.length}: ${errorMessage} (${statusCode})`);
+          }
         },
         // Combine function
-        joinTranscriptions
+        (results) => {
+          console.log(`Combining ${results.length} transcription chunks...`);
+          return joinTranscriptions(results);
+        }
       );
 
+      console.log(`Transcription complete. Length: ${transcription.length} characters`);
+      
       return NextResponse.json({ 
-        transcription: transcription,
+        transcription,
         usage: {
           model: selectedModel.name,
           estimatedDurationMinutes,
@@ -206,30 +183,30 @@ const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
           chunks: audioChunks.length
         }
       });
-    } catch (openaiError: any) {
-      console.error('OpenAI API fout bij het verwerken van audio:', openaiError);
+    } catch (processingError: any) {
+      console.error('Error processing audio:', processingError);
       
-      let errorMessage = 'OpenAI API fout';
+      let errorMessage = 'Processing error';
       let statusCode = 500;
       
-      // Improved error handling
-      if (openaiError.status === 413 || 
-          (openaiError.message && (openaiError.message.includes('413') || openaiError.message.includes('too large')))) {
-        errorMessage = `Fout bij verwerken van audiobestand. Mogelijk is een van de delen nog te groot.`;
-        statusCode = 413;
-      } else if (openaiError.message?.includes('file_url')) {
-        errorMessage = 'Probleem met de audio URL. Controleer of de URL toegankelijk is voor OpenAI.';
-      } else if (openaiError.status === 429) {
-        errorMessage = 'API limiet bereikt. Probeer het over enkele ogenblikken opnieuw.';
-        statusCode = 429;
-      } else if (openaiError.status === 401) {
-        errorMessage = 'Authenticatiefout. Controleer uw OpenAI API-sleutel.';
-        statusCode = 401;
-      } else if (openaiError.message && openaiError.message.includes('Tijdslimiet')) {
-        errorMessage = openaiError.message;
+      // Improved error handling with specific error messages
+      if (processingError.message?.includes('timeout') || processingError.message?.includes('Timeout')) {
+        errorMessage = processingError.message;
         statusCode = 408; // Request Timeout
-      } else if (openaiError.message) {
-        errorMessage = `OpenAI Transcriptie fout: ${openaiError.message}`;
+      } else if (processingError.message?.includes('chunk')) {
+        // This is from our chunk processing error
+        errorMessage = processingError.message;
+      } else if (processingError.status === 413 || processingError.message?.includes('too large')) {
+        errorMessage = 'Audio file is too large even after chunking. Please try a smaller file.';
+        statusCode = 413;
+      } else if (processingError.status === 429) {
+        errorMessage = 'API rate limit reached. Please try again later.';
+        statusCode = 429;
+      } else if (processingError.status === 401) {
+        errorMessage = 'Authentication error. Check your OpenAI API key.';
+        statusCode = 401;
+      } else if (processingError.message) {
+        errorMessage = `Error: ${processingError.message}`;
       }
       
       return NextResponse.json(
@@ -238,19 +215,10 @@ const numChunks = needsChunking ? Math.ceil(fileSize / SIZE_LIMIT) : 1;
       );
     }
   } catch (error: any) {
-    console.error('Transcriptie fout:', error);
+    console.error('Transcription error:', error);
     
-    // More specific error handling
-    let errorMessage = error.error?.message || error.message || 'Audio transcriptie mislukt';
-    let statusCode = error.status || 500;
-    
-    // Handle specific errors
-    if (statusCode === 413 || errorMessage.includes('413') || errorMessage.includes('too large')) {
-      errorMessage = 'Fout bij verwerken van audiobestand. Mogelijk is een van de delen nog te groot.';
-      statusCode = 413;
-    } else if (errorMessage.includes('Tijdslimiet')) {
-      statusCode = 408; // Request Timeout
-    }
+    const errorMessage = error.message || 'Audio transcription failed';
+    const statusCode = error.status || 500;
     
     return NextResponse.json(
       { error: errorMessage },
