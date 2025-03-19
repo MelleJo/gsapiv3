@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 
+// Create a casted MotionDiv to bypass TS errors regarding className
+const MotionDiv: any = motion.div;
+
 interface TranscriptionProgressProps {
   isActive: boolean;
   currentPhase: 'uploading' | 'processing' | 'transcribing' | 'complete';
@@ -118,14 +121,14 @@ export default function TranscriptionProgress({
                 <path d="M20 6L9 17l-5-5"></path>
               </svg>
             ) : (
-              <motion.div
+              <MotionDiv
                 animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                 </svg>
-              </motion.div>
+              </MotionDiv>
             )}
           </div>
           <h3 className="text-lg font-medium text-neutral-800">
@@ -142,11 +145,11 @@ export default function TranscriptionProgress({
       
       {/* Main progress bar */}
       <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
-        <motion.div
+        <MotionDiv
           className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"
           initial={{ width: 0 }}
           animate={{ width: `${progressPercent}%` }}
-          transition={{ type: "spring", stiffness: 50, damping: 10 }}
+          transition={{ type: 'spring', stiffness: 50, damping: 10 }}
         />
       </div>
       
@@ -154,7 +157,7 @@ export default function TranscriptionProgress({
       <div className="flex justify-between items-center text-sm text-neutral-500">
         <div className="flex items-center">
           {currentPhase !== 'complete' && (
-            <motion.div 
+            <MotionDiv
               className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-2"
               animate={{ scale: [1, 1.5, 1] }}
               transition={{ duration: 1.5, repeat: Infinity }}
@@ -184,14 +187,14 @@ export default function TranscriptionProgress({
           label="Uploaden"
         />
         <div className="w-16 h-0.5 bg-gray-200">
-          <motion.div 
+          <MotionDiv
             className="h-full bg-blue-500" 
             initial={{ width: 0 }}
             animate={{ 
               width: currentPhase === 'uploading' ? '50%' : 
-                    currentPhase === 'processing' || currentPhase === 'transcribing' || currentPhase === 'complete' ? '100%' : '0%' 
+                     currentPhase === 'processing' || currentPhase === 'transcribing' || currentPhase === 'complete' ? '100%' : '0%' 
             }}
-            transition={{ type: "spring", stiffness: 50, damping: 10 }}
+            transition={{ type: 'spring', stiffness: 50, damping: 10 }}
           />
         </div>
         <PhaseIndicator 
@@ -200,14 +203,14 @@ export default function TranscriptionProgress({
           label="Verwerken"
         />
         <div className="w-16 h-0.5 bg-gray-200">
-          <motion.div 
+          <MotionDiv
             className="h-full bg-blue-500" 
             initial={{ width: 0 }}
             animate={{ 
               width: currentPhase === 'processing' ? '50%' : 
-                    currentPhase === 'transcribing' || currentPhase === 'complete' ? '100%' : '0%' 
+                     currentPhase === 'transcribing' || currentPhase === 'complete' ? '100%' : '0%' 
             }}
-            transition={{ type: "spring", stiffness: 50, damping: 10 }}
+            transition={{ type: 'spring', stiffness: 50, damping: 10 }}
           />
         </div>
         <PhaseIndicator 
@@ -216,14 +219,14 @@ export default function TranscriptionProgress({
           label="Transcriberen"
         />
         <div className="w-16 h-0.5 bg-gray-200">
-          <motion.div 
+          <MotionDiv
             className="h-full bg-blue-500" 
             initial={{ width: 0 }}
             animate={{ 
               width: currentPhase === 'transcribing' ? '50%' : 
-                    currentPhase === 'complete' ? '100%' : '0%' 
+                     currentPhase === 'complete' ? '100%' : '0%' 
             }}
-            transition={{ type: "spring", stiffness: 50, damping: 10 }}
+            transition={{ type: 'spring', stiffness: 50, damping: 10 }}
           />
         </div>
         <PhaseIndicator 
@@ -240,43 +243,39 @@ export default function TranscriptionProgress({
 function PhaseIndicator({ active, completed, label }: { active: boolean; completed: boolean; label: string }) {
   return (
     <div className="flex flex-col items-center">
-      <motion.div 
-        className={`w-5 h-5 rounded-full flex items-center justify-center ${
-          active ? 'bg-blue-500' : 'bg-gray-200'
-        }`}
+      <MotionDiv
+        className={`w-5 h-5 rounded-full flex items-center justify-center ${active ? 'bg-blue-500' : 'bg-gray-200'}`}
         animate={{ 
           scale: active && !completed ? [1, 1.1, 1] : 1,
-          backgroundColor: active ? (
-            completed ? '#3b82f6' : '#3b82f6'
-          ) : '#e5e7eb'
+          backgroundColor: active ? (completed ? '#3b82f6' : '#3b82f6') : '#e5e7eb'
         }}
         transition={{ 
-          scale: { 
-            duration: 1.5, 
-            repeat: active && !completed ? Infinity : 0 
-          },
+          scale: { duration: 1.5, repeat: active && !completed ? Infinity : 0 },
           backgroundColor: { duration: 0.3 }
         }}
       >
         {completed && (
-          <motion.svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            width="12" 
-            height="12" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="white" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
+          <MotionDiv
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 10 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 10 }}
           >
-            <path d="M20 6L9 17l-5-5"></path>
-          </motion.svg>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="12" 
+              height="12" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="white" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <path d="M20 6L9 17l-5-5"></path>
+            </svg>
+          </MotionDiv>
         )}
-      </motion.div>
+      </MotionDiv>
       <span className={`text-xs mt-1 ${active ? 'text-blue-600 font-medium' : 'text-neutral-400'}`}>
         {label}
       </span>
