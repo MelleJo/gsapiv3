@@ -27,6 +27,8 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <meta name="theme-color" content="#ffffff" />
+        {/* Add the CSP meta tag here */}
+        <meta httpEquiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' https://unpkg.com; worker-src blob:" />
       </head>
       <body className="antialiased">
         <main>{children}</main>

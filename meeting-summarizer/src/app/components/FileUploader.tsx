@@ -1,10 +1,10 @@
 'use client';
 
-// Use proper import syntax
 import React, { useRef, useState, forwardRef, HTMLAttributes } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { motion, MotionProps } from 'framer-motion';
 import { upload } from '@vercel/blob/client';
+import AudioConverter from './AudioConverter';
 
 // Define motion button component with proper typing
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
@@ -38,30 +38,30 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isClientUpload, setIsClientUpload] = useState<boolean>(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [conversionProgress, setConversionProgress] = useState<number>(0);
   
   // Define the threshold for server vs client uploads
-  // Files larger than this will use client uploads
   const SERVER_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4MB (safely under Vercel's 4.5MB limit)
 
-  // Handle file selection change and automatically upload
+  // Handle file selection change
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFileName(e.target.files[0].name);
+      const file = e.target.files[0];
+      setFileName(file.name);
+      setSelectedFile(file);
       setError('');
-      // Automatically start upload when file is selected
-      handleUpload();
     }
   };
 
   // Handle file upload
-  const handleUpload = async () => {
-    if (!inputFileRef.current?.files || inputFileRef.current.files.length === 0) {
+  const handleUpload = async (fileToUpload: File) => {
+    if (!fileToUpload) {
       setError('Geen bestand geselecteerd');
       return;
     }
 
-    const file = inputFileRef.current.files[0];
-    
     // Create a comprehensive mapping of file extensions to valid MIME types
     const validMimeTypes = {
       // Common audio formats
@@ -78,8 +78,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     };
     
     // Get file extension from name and MIME type
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-    const fileType = file.type.toLowerCase();
+    const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase() || '';
+    const fileType = fileToUpload.type.toLowerCase();
     
     // Check if the file is a valid audio or video type
     const isValidType = 
@@ -99,8 +99,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     
     // Check file size (500MB limit as set in vercel.json)
     const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB in bytes
-    if (file.size > MAX_FILE_SIZE) {
-      setError(`Bestand te groot (${(file.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 500MB.`);
+    if (fileToUpload.size > MAX_FILE_SIZE) {
+      setError(`Bestand te groot (${(fileToUpload.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 500MB.`);
       return;
     }
 
@@ -112,13 +112,13 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       let blobData: BlobFile;
       
       // Determine upload method based on file size
-      if (file.size <= SERVER_UPLOAD_LIMIT) {
+      if (fileToUpload.size <= SERVER_UPLOAD_LIMIT) {
         // Small file: Use server upload (faster, simpler)
         setIsClientUpload(false);
         
         // Create FormData to send file
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', fileToUpload);
         
         const response = await fetch('/api/upload-blob', {
           method: 'POST',
@@ -156,7 +156,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         setIsClientUpload(true);
         
         // Direct browser-to-blob upload
-        const blob = await upload(file.name, file, {
+        const blob = await upload(fileToUpload.name, fileToUpload, {
           access: 'public',
           handleUploadUrl: '/api/client-upload',
           onUploadProgress: (progress) => {
@@ -169,9 +169,9 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         blobData = {
           url: blob.url,
           pathname: blob.pathname,
-          size: file.size,
-          contentType: file.type,
-          originalName: file.name
+          size: fileToUpload.size,
+          contentType: fileToUpload.type,
+          originalName: fileToUpload.name
         };
       }
       
@@ -182,6 +182,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       
       // Reset state after successful upload
       setFileName('');
+      setSelectedFile(null);
       setIsClientUpload(false);
       if (inputFileRef.current) {
         inputFileRef.current.value = '';
@@ -208,10 +209,54 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     }
   };
 
+  // Handle conversion complete
+  const handleConversionComplete = (convertedFile: File) => {
+    console.log(`Conversion complete: ${convertedFile.name} (${convertedFile.size} bytes)`);
+    setIsConverting(false);
+    setFileName(convertedFile.name);
+    // Automatically start upload after conversion
+    handleUpload(convertedFile);
+  };
+
+  // Handle conversion error
+  const handleConversionError = (errorMessage: string) => {
+    setIsConverting(false);
+    setError(errorMessage);
+  };
+
+  // Handle conversion progress
+  const handleConversionProgress = (progress: number) => {
+    setConversionProgress(progress);
+  };
+
   // Trigger the hidden file input
   const triggerFileInput = () => {
     if (inputFileRef.current) {
       inputFileRef.current.click();
+    }
+  };
+
+  // Start the upload or conversion process
+  const startProcess = () => {
+    if (!selectedFile) {
+      setError('Geen bestand geselecteerd');
+      return;
+    }
+
+    setError('');
+    
+    // Check if this is a format that needs conversion
+    const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+    const needsConversion = ['m4a', 'mp4', 'aac', 'flac', 'ogg', 'webm'].includes(fileExt);
+    
+    if (needsConversion) {
+      // Set converting state
+      setIsConverting(true);
+      setConversionProgress(0);
+      // Conversion will trigger upload automatically when complete
+    } else {
+      // For MP3 and WAV files, proceed directly to upload
+      handleUpload(selectedFile);
     }
   };
 
@@ -278,10 +323,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           
           // Set the filename and reset error
           setFileName(file.name);
+          setSelectedFile(file);
           setError('');
-          
-          // Automatically start upload when file is dropped
-          handleUpload();
         }
       } else {
         setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
@@ -368,6 +411,20 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       </div>
       
       <div className="w-full">
+        {/* Audio Converter Component - only renders when needed */}
+        {isConverting && selectedFile && (
+          <div className="mt-4">
+            <AudioConverter
+              file={selectedFile}
+              onConversionComplete={handleConversionComplete}
+              onError={handleConversionError}
+              targetFormat="wav"
+              onProgress={handleConversionProgress}
+            />
+          </div>
+        )}
+        
+        {/* Upload Progress Bar */}
         {uploading && isClientUpload && (
           <div className="mt-4 w-full">
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -382,13 +439,14 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           </div>
         )}
         
+        {/* Upload/Convert Button */}
         <MotionButton
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleUpload}
-          disabled={!fileName || uploading}
+          onClick={startProcess}
+          disabled={!fileName || uploading || isConverting}
           className={`mt-4 px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all w-full justify-center ${
-            !fileName || uploading
+            !fileName || uploading || isConverting
               ? 'bg-neutral-300 cursor-not-allowed'
               : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-md'
           }`}
@@ -400,6 +458,14 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               {isClientUpload ? 'Direct uploaden naar Vercel Blob...' : 'Uploaden...'}
+            </>
+          ) : isConverting ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Bestand converteren... ({conversionProgress}%)
             </>
           ) : (
             <>
