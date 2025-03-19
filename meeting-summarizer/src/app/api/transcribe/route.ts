@@ -6,7 +6,7 @@ import { MAX_CHUNK_SIZE, splitAudioBlob, joinTranscriptions, processChunks } fro
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 900, // 15 minutes max execution time (increased for chunking)
+  maxDuration: 300, // 15 minutes max execution time (increased for chunking)
   api: {
     bodyParser: {
       sizeLimit: '500mb', // Increased from default for large files
