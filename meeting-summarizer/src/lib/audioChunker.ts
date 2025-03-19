@@ -118,11 +118,11 @@ export async function processChunks<T>(
   if (chunks.length === 0) {
     throw new Error('No chunks to process');
   }
-
+  
   if (chunks.length === 1) {
     return await processFn(chunks[0], 0);
   }
-
+  
   const results: T[] = [];
   for (let i = 0; i < chunks.length; i++) {
     try {
