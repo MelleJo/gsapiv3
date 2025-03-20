@@ -329,90 +329,91 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       </div>
       
       <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed">
-        {sections.map((section, index) => {
-          try {
-            if (section.type === 'section') {
-              return (
-                <div key={index} className="mb-6">
-                  <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100">
-                    {section.number && <span className="mr-1">{section.number}</span>}
-                    {section.title || ''}
-                  </h3>
-                  <div className="text-gray-700 leading-relaxed pl-1">
-                    {section.content}
+        <div className="space-y-4">
+          {sections.map((section, index) => {
+            try {
+              if (section.type === 'section') {
+                return (
+                  <div key={index} className="mb-6">
+                    <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100">
+                      {section.number && <span className="mr-1">{section.number}</span>}
+                      {section.title || ''}
+                    </h3>
+                    <div className="text-gray-700 leading-relaxed pl-1">
+                      {section.content}
+                    </div>
                   </div>
-                </div>
-              );
-            } else if (section.type === 'bullet-list') {
-              return (
-                <div key={index} className="mb-4 ml-1">
-                  <ul className="space-y-3">
-                    {section.items?.map((item, itemIndex) => {
-                      const bulletSymbol = item.startsWith('•') ? '•' : 
-                                          item.startsWith('-') ? '–' : 
-                                          item.startsWith('*') ? '•' : '';
-                      
-                      return (
-                        <li key={itemIndex} className="flex">
-                          {bulletSymbol && (
-                            <span className="inline-block w-5 flex-shrink-0 text-blue-600 font-bold">{bulletSymbol}</span>
-                          )}
-                          <span 
-                            className="flex-grow"
-                            dangerouslySetInnerHTML={{ 
-                              __html: processBulletPoint(item) 
-                            }}
-                          />
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            } else if (section.type === 'dash-separator') {
-              // Better render dashes and separators
-              try {
-                return (
-                  <div 
-                    key={index} 
-                    className="my-2 text-gray-700 flex items-center"
-                    dangerouslySetInnerHTML={{ 
-                      __html: section.content
-                        .replace(/\s+—+\s+/g, ' <span class="px-3 text-gray-400">—</span> ')
-                        .replace(/\s+–+\s+/g, ' <span class="px-3 text-gray-400">–</span> ')
-                        .replace(/\s+-+\s+/g, ' <span class="px-3 text-gray-400">-</span> ')
-                    }}
-                  />
                 );
-              } catch (e) {
-                console.error("Error rendering dash separator:", e);
-                return <div key={index} className="my-2">{section.content}</div>;
-              }
-            } else if (section.type === 'formatted') {
-              try {
+              } else if (section.type === 'bullet-list') {
                 return (
-                  <div 
-                    key={index} 
-                    className="mb-4"
-                    dangerouslySetInnerHTML={{ __html: renderFormattedText(section.content) }}
-                  />
+                  <div key={index} className="mb-4 ml-1">
+                    <ul className="space-y-3">
+                      {section.items?.map((item, itemIndex) => {
+                        const bulletSymbol = item.startsWith('•') ? '•' : 
+                                              item.startsWith('-') ? '–' : 
+                                              item.startsWith('*') ? '•' : '';
+                        
+                        return (
+                          <li key={itemIndex} className="flex">
+                            {bulletSymbol && (
+                              <span className="inline-block w-5 flex-shrink-0 text-blue-600 font-bold">{bulletSymbol}</span>
+                            )}
+                            <span 
+                              className="flex-grow"
+                              dangerouslySetInnerHTML={{ 
+                                __html: processBulletPoint(item) 
+                              }}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 );
-              } catch (e) {
-                console.error("Error rendering formatted text:", e);
-                return <div key={index} className="mb-4">{section.content}</div>;
+              } else if (section.type === 'dash-separator') {
+                try {
+                  return (
+                    <div 
+                      key={index} 
+                      className="my-2 text-gray-700 flex items-center"
+                      dangerouslySetInnerHTML={{ 
+                        __html: section.content
+                          .replace(/\s+—+\s+/g, ' <span class="px-3 text-gray-400">—</span> ')
+                          .replace(/\s+–+\s+/g, ' <span class="px-3 text-gray-400">–</span> ')
+                          .replace(/\s+-+\s+/g, ' <span class="px-3 text-gray-400">-</span> ')
+                      }}
+                    />
+                  );
+                } catch (e) {
+                  console.error("Error rendering dash separator:", e);
+                  return <div key={index} className="my-2">{section.content}</div>;
+                }
+              } else if (section.type === 'formatted') {
+                try {
+                  return (
+                    <div 
+                      key={index} 
+                      className="mb-4"
+                      dangerouslySetInnerHTML={{ __html: renderFormattedText(section.content) }}
+                    />
+                  );
+                } catch (e) {
+                  console.error("Error rendering formatted text:", e);
+                  return <div key={index} className="mb-4">{section.content}</div>;
+                }
+              } else {
+                return (
+                  <p key={index} className="mb-4">
+                    {section.content}
+                  </p>
+                );
               }
-            } else {
-              return (
-                <p key={index} className="mb-4">
-                  {section.content}
-                </p>
-              );
+            } catch (e) {
+              console.error("Error rendering section:", e);
+              return <p key={index} className="mb-4 text-red-500">Error rendering content</p>;
             }
-          } catch (e) {
-            console.error("Error rendering section:", e);
-            return <p key={index} className="mb-4 text-red-500">Error rendering content</p>;
-          }
-        })}
+          })}
+        </div>
       </div>
 
       <style jsx global>{`
