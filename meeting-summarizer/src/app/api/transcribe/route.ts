@@ -14,9 +14,13 @@ export async function POST(request: Request) {
   try {
     // Removed Content-Type check to allow requests without explicit multipart/form-data header.
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    let file = formData.get('file') as File;
     if (!file) {
       return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
+    }
+    // Ensure the file has a valid MIME type; if missing, set a default.
+    if (!file.type || file.type.trim() === "") {
+      file = new File([file], file.name, { type: "audio/mpeg" });
     }
 
     // Determine if streaming is requested (expects string "true")
