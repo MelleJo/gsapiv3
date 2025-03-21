@@ -12,7 +12,7 @@ import * as audioChunker from '../../../lib/audioChunker';
  */
 export async function POST(request: Request) {
   try {
-    // Remove Content-Type check to allow requests without multipart/form-data header.
+    // Removed Content-Type check to allow requests without explicit multipart/form-data header.
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -27,6 +27,10 @@ export async function POST(request: Request) {
     const processTranscription = async (audio: File | Blob): Promise<string> => {
       // Use "gpt-4o-mini-transcribe" for streaming; use "gpt-4o-transcribe" otherwise.
       const model = streamParam ? "gpt-4o-mini-transcribe" : "gpt-4o-transcribe";
+      // If the audio blob/file lacks a valid MIME type, set a default.
+      if (!audio.type || audio.type.trim() === "") {
+        audio = new Blob([audio], { type: "audio/mpeg" });
+      }
       const params: any = {
         file: audio,
         model,
@@ -82,6 +86,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ transcript: fullTranscript, summary });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "An error occurred." }, { status: 500 });
+    let message = error.message || "An error occurred.";
+    if (message.includes("Content-Type")) {
+      message += " Please ensure that you do not manually set the Content-Type header; let the browser or HTTP library set it automatically as multipart/form-data.";
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
