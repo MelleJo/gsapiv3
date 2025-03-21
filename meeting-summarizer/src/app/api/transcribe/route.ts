@@ -6,12 +6,13 @@ import * as audioChunker from '../../../lib/audioChunker';
  * Handles audio transcription and summarization.
  * 
  * - Uses gpt-4o-transcribe (or gpt-4o-mini-transcribe for streaming) to transcribe audio.
- * - If the uploaded audio file exceeds 25MB, it is split into chunks via chunkAudioFile.
- * - Supports streaming transcription if "stream" form field is set to "true".
+ * - If the uploaded audio file exceeds 25MB, it is split into chunks using the audioChunker utilities.
+ * - Supports streaming transcription if the "stream" form field is set to "true".
  * - After transcription, a summarization request is sent to GPT-4O.
  */
 export async function POST(request: Request) {
   try {
+    // Remove Content-Type check to allow requests without multipart/form-data header.
     const formData = await request.formData();
     const file = formData.get('file') as File;
     if (!file) {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     const streamParam = formData.get('stream')?.toString() === 'true';
     let fullTranscript = "";
 
-    // Arrow function to process transcription for a single audio (or chunk)
+    // Function to process transcription for a single audio (or chunk)
     const processTranscription = async (audio: File | Blob): Promise<string> => {
       // Use "gpt-4o-mini-transcribe" for streaming; use "gpt-4o-transcribe" otherwise.
       const model = streamParam ? "gpt-4o-mini-transcribe" : "gpt-4o-transcribe";
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
         let transcriptChunk = "";
         // The create call returns an async iterable stream.
         const streamResponse = await openai.audio.transcriptions.create(params);
-        // Cast to unknown then to AsyncIterable<any> to satisfy TS.
+        // Cast to unknown then to AsyncIterable<any> to satisfy TypeScript.
         for await (const event of (streamResponse as unknown as AsyncIterable<any>)) {
           if (event.type === 'transcript.text.delta' && event.text) {
             transcriptChunk += event.text;
