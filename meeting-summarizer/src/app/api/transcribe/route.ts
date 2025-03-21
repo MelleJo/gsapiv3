@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Readable } from 'stream';
 import openai from '../../../lib/openai';
 import * as audioChunker from '../../../lib/audioChunker';
 
@@ -12,7 +13,7 @@ import * as audioChunker from '../../../lib/audioChunker';
  */
 export async function POST(request: Request) {
   try {
-    // Removed Content-Type check to allow requests without explicit multipart/form-data header.
+    // Allow requests without explicit Content-Type check.
     const formData = await request.formData();
     let file = formData.get('file') as File;
     if (!file) {
@@ -22,6 +23,13 @@ export async function POST(request: Request) {
     if (!file.type || file.type.trim() === "") {
       file = new File([file], file.name, { type: "audio/mpeg" });
     }
+    
+    // Convert a Blob (or File) to a Node.js Readable stream.
+    const blobToStream = async (blob: Blob) => {
+      const arrayBuffer = await blob.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return Readable.from(buffer);
+    };
 
     // Determine if streaming is requested (expects string "true")
     const streamParam = formData.get('stream')?.toString() === 'true';
@@ -31,12 +39,15 @@ export async function POST(request: Request) {
     const processTranscription = async (audio: File | Blob): Promise<string> => {
       // Use "gpt-4o-mini-transcribe" for streaming; use "gpt-4o-transcribe" otherwise.
       const model = streamParam ? "gpt-4o-mini-transcribe" : "gpt-4o-transcribe";
-      // If the audio blob/file lacks a valid MIME type, set a default.
+      // Ensure the audio blob/file has a valid MIME type.
       if (!audio.type || audio.type.trim() === "") {
         audio = new Blob([audio], { type: "audio/mpeg" });
       }
+      // Convert the audio blob into a Readable stream.
+      const fileStream = await blobToStream(audio);
+      
       const params: any = {
-        file: audio,
+        file: fileStream,
         model,
         response_format: "text",
         stream: streamParam,
