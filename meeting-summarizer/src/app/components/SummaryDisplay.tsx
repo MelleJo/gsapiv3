@@ -54,38 +54,60 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Function to detect and parse markdown tables
+  // Function to detect and parse markdown tables with support for unusual formats
   const parseMarkdownTable = (text: string): { headers: string[]; rows: string[][] } | null => {
-    // Split the text into lines
+    // First, check if we have pipe characters which would indicate a table
+    if (!text.includes('|')) return null;
+    
+    // Split into lines
     const lines = text.trim().split('\n');
+    if (lines.length < 2) return null;
     
-    // Check if we have at least 3 lines (header, separator, and at least one data row)
-    if (lines.length < 3) return null;
+    // Find the header line - it's usually the first line with pipe characters
+    // that isn't just a separator line
+    let headerLine = '';
+    let headerIndex = -1;
     
-    // Check if the first line contains pipe characters
-    if (!lines[0].includes('|')) return null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      // Skip lines that are just separators (only dashes and pipes)
+      if (line.match(/^[-\|]+$/)) continue;
+      
+      if (line.includes('|')) {
+        headerLine = line;
+        headerIndex = i;
+        break;
+      }
+    }
     
-    // Extract headers
-    const headerLine = lines[0].trim();
+    if (!headerLine || headerIndex === -1) return null;
+    
+    // Parse the headers - cleanup any extra dashes
     const headers = headerLine.split('|')
-      .map(cell => cell.trim())
+      .map(cell => cell.trim().replace(/^-+|-+$/g, ''))
       .filter(cell => cell !== '');
     
-    // Validate separator line
-    const separatorLine = lines[1].trim();
-    if (!separatorLine.includes('|') || !separatorLine.includes('-')) return null;
+    if (headers.length === 0) return null;
     
-    // Extract data rows
+    // Extract rows - skip separator lines
     const rows: string[][] = [];
-    for (let i = 2; i < lines.length; i++) {
+    
+    for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
-      if (!line || !line.includes('|')) continue;
       
-      const cells = line.split('|')
-        .map(cell => cell.trim())
-        .filter((cell, index) => index > 0 || cell !== ''); // Keep empty cells in the middle
+      // Skip separator lines
+      if (line.match(/^[-\|]+$/)) continue;
       
-      rows.push(cells);
+      // If it has pipes, it's probably a data row
+      if (line.includes('|')) {
+        const cells = line.split('|')
+          .map(cell => cell.trim().replace(/^-+|-+$/g, ''))
+          .filter((cell, idx) => idx > 0 || cell !== '');
+        
+        if (cells.length > 0) {
+          rows.push(cells);
+        }
+      }
     }
     
     return { headers, rows };
@@ -99,16 +121,19 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     let sections: Section[] = [];
     
     try {
-      // First check for tables
+      // Split by double line breaks first
       const tableSections = text.split(/\n\n+/);
       
       for (const section of tableSections) {
         if (!section || !section.trim()) continue;
         
-        // Check if this section contains a markdown table
-        if (section.includes('|') && section.includes('\n')) {
+        // Check if this section has multiple pipe characters across multiple lines
+        // which is a strong indicator of a table
+        if (section.includes('|') && section.includes('\n') && 
+            (section.split('|').length > 3) && (section.split('\n').filter(line => line.includes('|')).length > 1)) {
+          
           const tableData = parseMarkdownTable(section);
-          if (tableData && tableData.headers.length > 0 && tableData.rows.length > 0) {
+          if (tableData && tableData.headers.length > 0) {
             sections.push({
               type: 'table',
               content: section,
@@ -383,11 +408,11 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                   // Render a properly formatted HTML table
                   return (
                     <div key={index} className="mb-8 overflow-x-auto">
-                      <table className="min-w-full border-collapse border border-gray-300">
+                      <table className="min-w-full border-collapse border border-gray-300 text-sm">
                         <thead>
                           <tr className="bg-gray-100">
                             {section.tableData.headers.map((header, headerIndex) => (
-                              <th key={headerIndex} className="border border-gray-300 px-4 py-2 text-left font-semibold">
+                              <th key={headerIndex} className="border border-gray-300 px-3 py-2 text-left font-semibold">
                                 {header}
                               </th>
                             ))}
@@ -396,11 +421,20 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                         <tbody>
                           {section.tableData.rows.map((row, rowIndex) => (
                             <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="border border-gray-300 px-4 py-2">
-                                  {cell}
-                                </td>
-                              ))}
+                              {row.map((cell, cellIndex) => {
+                                // For each cell, handle potential special formatting
+                                const content = cell
+                                  .replace(/\|\|+/g, '')  // Remove multiple pipe characters
+                                  .replace(/^\s*\|\s*|\s*\|\s*$/, '')  // Remove pipe chars at start/end
+                                  .replace(/^\s*-+\s*|-+\s*$/g, '')  // Remove dashes at start/end
+                                  .trim();
+                                  
+                                return (
+                                  <td key={cellIndex} className="border border-gray-300 px-3 py-2">
+                                    {content || '\u00A0'} {/* Use non-breaking space if empty */}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           ))}
                         </tbody>
