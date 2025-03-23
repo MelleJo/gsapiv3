@@ -2,10 +2,17 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
+import React, { HTMLAttributes, forwardRef } from 'react';
 import SummaryDisplay from './SummaryDisplay';
-import TranscriptionDisplay from './TranscriptionDisplay';
 import SummaryActions from './SummaryActions';
+
+// Create properly typed motion components
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
+const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
+  <motion.div ref={ref} {...props} />
+));
+MotionDiv.displayName = 'MotionDiv';
 
 interface FinalScreenProps {
   summary: string;
@@ -39,6 +46,8 @@ export default function FinalScreen({
   onRegenerateSummary,
   onRegenerateTranscript
 }: FinalScreenProps) {
+  const [showTranscript, setShowTranscript] = useState<boolean>(false);
+
   return (
     <div className="max-w-6xl mx-auto px-4 pt-6">
       {/* Header with file info and actions */}
@@ -98,15 +107,84 @@ export default function FinalScreen({
           </div>
         )}
         
-        {/* Transcription - Collapsed by default */}
+        {/* Transcription - Toggleable */}
         {transcription && (
           <div className="mb-8">
-            <TranscriptionDisplay 
-              text={transcription} 
-              isLoading={false}
-              chunked={transcriptionInfo.chunked}
-              chunksCount={transcriptionInfo.chunks}
-            />
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold text-gray-800">Transcriptie</h2>
+                  {transcriptionInfo.chunked && transcriptionInfo.chunks > 1 && (
+                    <div className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                      </svg>
+                      Verwerkt in {transcriptionInfo.chunks} delen
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowTranscript(!showTranscript)}
+                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  {showTranscript ? 'Verbergen' : 'Tonen'}
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className={`w-4 h-4 transition-transform ${showTranscript ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+              </div>
+              
+              <AnimatePresence>
+                {showTranscript ? (
+                  <MotionDiv
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                      {transcription.split('\n').map((paragraph, i) => (
+                        <p key={i} className="mb-4 text-gray-700 leading-relaxed">
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
+                  </MotionDiv>
+                ) : (
+                  <div 
+                    className="text-gray-700 text-sm bg-gray-50 p-4 rounded-lg mb-3 cursor-pointer"
+                    onClick={() => setShowTranscript(true)}
+                  >
+                    {transcription.substring(0, 150)}...
+                    <div className="text-blue-600 text-xs mt-2 flex items-center justify-center">
+                      Klik om volledige transcriptie te zien
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        className="w-4 h-4 ml-1"
+                      >
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         )}
         
@@ -164,6 +242,23 @@ export default function FinalScreen({
           </button>
         </div>
       </div>
+      
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #d1d5db;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+      `}</style>
     </div>
   );
 }

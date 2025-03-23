@@ -140,17 +140,17 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             });
           }
         } 
-        // Check if this is a section header with pattern A. Title:
-        else if (safeMatch(block, /^(\d+\.\s+)?([A-Z][^.]+):/)) {
-          // Use a safer pattern without /s flag
-          const sectionMatch = safeMatch(block, /^(\d+\.\s+)?([A-Z][^:]+):([^]*?)$/);
+        // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
+        else if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
+          const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
           
           if (sectionMatch) {
+            // This is a numbered section with a title
             sections.push({
               type: 'section',
               number: sectionMatch[1] || '',
               title: (sectionMatch[2] || '').trim(),
-              content: (sectionMatch[3] || '').trim()
+              content: (sectionMatch[4] || '').trim()
             });
           } else {
             // Regular paragraph
@@ -335,7 +335,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
               if (section.type === 'section') {
                 return (
                   <div key={index} className="mb-6">
-                    <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100">
+                    <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100 flex items-center">
                       {section.number && <span className="mr-1">{section.number}</span>}
                       {section.title || ''}
                     </h3>
@@ -441,6 +441,14 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         em {
           font-style: italic;
           color: #374151;
+        }
+        
+        /* Improved styling for horizontal lines */
+        hr {
+          border: 0;
+          height: 1px;
+          background-color: #e5e7eb;
+          margin: 1.5rem 0;
         }
       `}</style>
     </MotionDiv>
