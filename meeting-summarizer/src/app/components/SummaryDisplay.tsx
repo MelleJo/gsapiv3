@@ -51,42 +51,48 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   const createEmailFriendlyText = (text: string): string => {
     if (!text) return '';
     
+    // Split the summary into lines
     const lines = text.split('\n');
     const result: string[] = [];
     
     let inTable = false;
+    let tableStartIndex = -1;
     
+    // Process each line
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const line = lines[i].trim();
       
-      // Skip empty lines
-      if (!line.trim()) {
+      // Skip empty lines but add them to output
+      if (!line) {
         result.push('');
         continue;
       }
       
-      // Check if this line looks like part of a table (has multiple pipe characters)
-      if (line.includes('|') && (line.match(/\|/g) || []).length >= 3) {
-        // We're in a table now
+      // Check if this line might be part of a table (contains multiple pipe characters)
+      const pipeCount = (line.match(/\|/g) || []).length;
+      
+      if (pipeCount >= 3) {
+        // This might be a table row
         if (!inTable) {
           inTable = true;
-          // Add a blank line before table
+          tableStartIndex = result.length;
+          // Add a blank line before table if needed
           if (result.length > 0 && result[result.length - 1] !== '') {
             result.push('');
           }
         }
         
-        // Skip separator lines (mostly dashes and pipes)
-        if (line.match(/^[\-\|\s]+$/)) {
+        // Skip purely decorative lines with just dashes and pipes
+        if (line.match(/^[-|\s]+$/)) {
           continue;
         }
         
-        // Process the table row
+        // Process row - split by pipes but keep bullet points and other formatting
         const cells = line.split('|')
           .map(cell => cell.trim())
-          .filter(cell => cell); // Remove empty cells
-        
-        // Join cells with tabs or proper spacing for email
+          .filter(cell => cell !== '');
+          
+        // Build a tab-delimited row, preserving bullets and other formatting
         const formattedRow = cells.join('\t');
         result.push(formattedRow);
       } else {
@@ -97,11 +103,12 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           result.push('');
         }
         
-        // Add regular line
+        // Add the line as is
         result.push(line);
       }
     }
     
+    // Join lines back together
     return result.join('\n');
   };
 
@@ -124,45 +131,106 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }));
   };
 
-  // Check if a block of text looks like a table
-  const isLikelyTable = (text: string): boolean => {
-    if (!text.includes('|')) return false;
+  // Detect tables with a more robust approach
+  const detectTables = (text: string): { tables: string[]; otherContent: string[] } => {
+    const lines = text.split('\n');
+    const tables: string[] = [];
+    const otherContent: string[] = [];
     
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 3) return false;
+    let currentTable: string[] = [];
+    let inTable = false;
+    let nonTableContent = '';
     
-    // Count the number of pipe characters in each line
-    const pipeCounts = lines.map(line => (line.match(/\|/g) || []).length);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmedLine = line.trim();
+      
+      // Check if this line looks like part of a table
+      const pipeCount = (trimmedLine.match(/\|/g) || []).length;
+      const hasDashes = trimmedLine.includes('-');
+      
+      // Conditions for a line to be part of a table:
+      // 1. Has 3+ pipe characters
+      // 2. Is a header/separator line (pipes and dashes)
+      const isTableLine = pipeCount >= 3 || (pipeCount >= 1 && hasDashes && trimmedLine.match(/^[-|\s]+$/));
+      
+      if (isTableLine) {
+        // If we were collecting non-table content, add it
+        if (nonTableContent.trim()) {
+          otherContent.push(nonTableContent.trim());
+          nonTableContent = '';
+        }
+        
+        // Start or continue a table
+        if (!inTable) {
+          inTable = true;
+          currentTable = [];
+        }
+        
+        currentTable.push(line);
+      } else {
+        // Handle end of table
+        if (inTable) {
+          // Check if this is just a blank line within a table
+          if (!trimmedLine && i + 1 < lines.length) {
+            const nextLine = lines[i + 1].trim();
+            const nextPipeCount = (nextLine.match(/\|/g) || []).length;
+            
+            // If next line looks like a table row, keep in table
+            if (nextPipeCount >= 3) {
+              currentTable.push(line);
+              continue;
+            }
+          }
+          
+          // End the current table
+          if (currentTable.length > 0) {
+            tables.push(currentTable.join('\n'));
+          }
+          currentTable = [];
+          inTable = false;
+        }
+        
+        // Add to non-table content
+        nonTableContent += line + '\n';
+      }
+    }
     
-    // If most lines have multiple pipe characters, it's likely a table
-    const multiplePipes = pipeCounts.filter(count => count >= 3).length;
-    return multiplePipes > lines.length * 0.5;
+    // Handle any remaining content
+    if (inTable && currentTable.length > 0) {
+      tables.push(currentTable.join('\n'));
+    }
+    
+    if (nonTableContent.trim()) {
+      otherContent.push(nonTableContent.trim());
+    }
+    
+    return { tables, otherContent };
   };
 
   // Process the summary text to properly render formatting
   const processSummary = (text: string): Section[] => {
     if (!text) return [];
     
-    // Split text into sections or paragraphs
     let sections: Section[] = [];
     
     try {
-      // First split by double line breaks
-      const blocks = text.split(/\n\n+/);
+      // First, extract tables and non-table content
+      const { tables, otherContent } = detectTables(text);
       
-      for (const block of blocks) {
-        if (!block || !block.trim()) continue;
-        
-        // Check if this block looks like a table
-        if (isLikelyTable(block)) {
-          const tableLines = block.split('\n').filter(line => line.trim());
-          sections.push({
-            type: 'raw-table',
-            content: block,
-            tableLines: tableLines
-          });
-          continue;
-        }
+      // Add tables as raw-table sections
+      tables.forEach(tableText => {
+        const tableLines = tableText.split('\n').filter(line => line.trim());
+        sections.push({
+          type: 'raw-table',
+          content: tableText,
+          tableLines
+        });
+      });
+      
+      // Process non-table content
+      otherContent.forEach(block => {
+        if (!block || !block.trim()) return;
         
         // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
         if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
@@ -259,7 +327,14 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             content: block
           });
         }
-      }
+      });
+      
+      // Sort sections based on their position in the original text
+      sections.sort((a, b) => {
+        const posA = text.indexOf(a.content);
+        const posB = text.indexOf(b.content);
+        return posA - posB;
+      });
     } catch (e) {
       console.error("Error processing summary:", e);
       // Fallback to simple paragraph rendering
@@ -270,29 +345,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
     
     return sections;
-  };
-
-  // Process bullet point to ensure proper display
-  const processBulletPoint = (bulletText: string) => {
-    if (!bulletText) return '';
-    
-    try {
-      // Replace the bullet character with a properly styled one
-      if (bulletText.startsWith('•')) {
-        return bulletText.replace(/^•\s+/, '');
-      } else if (bulletText.startsWith('-')) {
-        return bulletText.replace(/^-\s+/, '');
-      } else if (bulletText.startsWith('*')) {
-        return bulletText.replace(/^\*\s+/, '');
-      } else if (safeMatch(bulletText, /^\d+\.\s+/)) {
-        // For numbered bullets, preserve the number but style it
-        return bulletText.replace(/^(\d+\.)\s+/, '<span class="font-semibold mr-2">$1</span> ');
-      }
-      return bulletText;
-    } catch (e) {
-      console.error("Error processing bullet point:", e);
-      return bulletText; // Return the original text if processing fails
-    }
   };
 
   // Auto-collapse large tables on initial render
@@ -481,12 +533,12 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                         </div>
                       )}
                       
-                      <div className="overflow-x-auto rounded-lg border border-gray-300">
-                        <table className="min-w-full text-sm">
+                      <div className="overflow-x-auto" style={{ overflowWrap: 'break-word', wordWrap: 'break-word' }}>
+                        <table className="w-full border-collapse border border-gray-300 text-sm table-fixed">
                           <tbody>
                             {tableLines.slice(0, isExpanded ? tableLines.length : Math.min(5, tableLines.length)).map((line, lineIndex) => {
                               // Check if this is a separator line (only dashes and pipes)
-                              const isSeparator = line.match(/^[\-|\s]+$/);
+                              const isSeparator = line.match(/^[-|\s]+$/);
                               
                               if (isSeparator) {
                                 // Skip separator lines entirely
@@ -494,48 +546,32 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                               }
                               
                               // Check if this is likely a header row
-                              const isHeader = lineIndex === 0 || (lineIndex === 1 && tableLines[0].match(/^[\-|\s]+$/));
+                              const isHeader = lineIndex === 0 || (lineIndex === 1 && tableLines[0].match(/^[-|\s]+$/));
                               
-                              // Process the line - use a regex to split by pipe but preserve URLs with http://
-                              const pipeRegex = /\|(?![^<]*>|[^<>]*<\/)/; // Don't split pipes inside HTML tags
-                              const parts = line.split(pipeRegex);
-                              const cells = parts.map(part => part.trim());
+                              // Replace consecutive ||| with a single |
+                              const cleanedLine = line.replace(/\|{2,}/g, '|');
+                              
+                              // Split the line by | but preserve bullet points
+                              const cells = cleanedLine.split('|').map(part => {
+                                // Preserve bullet points, clean up whitespace
+                                return part.trim();
+                              }).filter((cell, i, arr) => {
+                                // Skip first and last cell if empty
+                                return !(i === 0 && !cell) && !(i === arr.length - 1 && !cell);
+                              });
                               
                               return (
                                 <tr key={lineIndex} className={isHeader ? "bg-gray-100" : (lineIndex % 2 === 0 ? "bg-white" : "bg-gray-50")}>
                                   {cells.map((cell, cellIndex) => {
-                                    // Skip empty cells at the beginning and end
-                                    if ((cellIndex === 0 || cellIndex === cells.length - 1) && !cell) {
-                                      return null;
-                                    }
-                                    
-                                    // Clean up any remaining pipe characters and dashes used for decoration
-                                    const cleanContent = cell
-                                      .replace(/\|\|+/g, '')  // Remove multiple pipe characters
-                                      .replace(/^[-\|]+|[-\|]+$/g, '')  // Remove dashes/pipes at start/end
-                                      .trim();
-                                    
-                                    // Handle hyperlinks - look for text patterns that might be links 
-                                    // and convert them to actual links
-                                    const formattedContent = cleanContent.replace(
-                                      /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
-                                      (match) => {
-                                        if (match.startsWith('http')) {
-                                          return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
-                                        } else {
-                                          return `<span class="text-blue-600">${match}</span>`;
-                                        }
-                                      }
-                                    );
-                                    
                                     // If this is a header cell
                                     if (isHeader) {
                                       return (
                                         <th 
                                           key={cellIndex} 
                                           className="border border-gray-300 px-3 py-2 text-left font-semibold"
-                                          dangerouslySetInnerHTML={{ __html: formattedContent || '&nbsp;' }}
-                                        />
+                                        >
+                                          {cell || '\u00A0'}
+                                        </th>
                                       );
                                     }
                                     
@@ -543,9 +579,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                                     return (
                                       <td 
                                         key={cellIndex} 
-                                        className="border border-gray-300 px-3 py-2"
-                                        dangerouslySetInnerHTML={{ __html: formattedContent || '&nbsp;' }}
-                                      />
+                                        className="border border-gray-300 px-3 py-2 align-top"
+                                      >
+                                        {cell || '\u00A0'}
+                                      </td>
                                     );
                                   })}
                                 </tr>
@@ -574,23 +611,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                           const isBullet = item.startsWith('•') || item.startsWith('-') || item.startsWith('*');
                           const isNumbered = safeMatch(item, /^\d+\.\s+/);
                           
-                          // Cleanup and format the content with potential links
-                          const itemContent = (isBullet ? 
-                            item.replace(/^[•*-]\s+/, '') : 
-                            item.replace(/^\d+\.\s+/, ''));
-                            
-                          // Format links and important terms
-                          const formattedContent = itemContent.replace(
-                            /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
-                            (match) => {
-                              if (match.startsWith('http')) {
-                                return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
-                              } else {
-                                return `<span class="text-blue-600">${match}</span>`;
-                              }
-                            }
-                          );
-                          
                           return (
                             <li key={itemIndex} className="flex items-start">
                               {isBullet ? (
@@ -602,10 +622,11 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                                   {parseInt(item)}
                                 </span>
                               ) : null}
-                              <span 
-                                className="flex-grow"
-                                dangerouslySetInnerHTML={{ __html: formattedContent }}
-                              />
+                              <span className="flex-grow">
+                                {isBullet ? 
+                                  item.replace(/^[•*-]\s+/, '') : 
+                                  item.replace(/^\d+\.\s+/, '')}
+                              </span>
                             </li>
                           );
                         })}
@@ -613,24 +634,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     </div>
                   );
                 } else {
-                  // Format regular paragraphs, looking for links and key terms
-                  const formattedContent = section.content.replace(
-                    /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
-                    (match) => {
-                      if (match.startsWith('http')) {
-                        return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
-                      } else {
-                        return `<span class="text-blue-600">${match}</span>`;
-                      }
-                    }
-                  );
-                  
                   return (
-                    <p 
-                      key={index} 
-                      className="text-gray-700 leading-relaxed mb-4"
-                      dangerouslySetInnerHTML={{ __html: formattedContent }}
-                    />
+                    <p key={index} className="text-gray-700 leading-relaxed mb-4">
+                      {section.content}
+                    </p>
                   );
                 }
               } catch (e) {
