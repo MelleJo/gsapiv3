@@ -62,14 +62,34 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       const blocks = text.split(/\n\n+/);
       
       for (const block of blocks) {
-        if (!block) continue; // Skip empty blocks
+        if (!block || !block.trim()) continue; // Skip empty blocks
         
-        // Check if this is a bullet list or contains bullets
-        if (
+        // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
+        if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
+          const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
+          
+          if (sectionMatch) {
+            // This is a numbered section with a title
+            sections.push({
+              type: 'section',
+              number: sectionMatch[1] || '',
+              title: (sectionMatch[2] || '').trim(),
+              content: (sectionMatch[4] || '').trim()
+            });
+          } else {
+            // Regular paragraph
+            sections.push({
+              type: 'paragraph',
+              content: block
+            });
+          }
+        } 
+        // Check if this is a bullet list
+        else if (
           safeMatch(block, /^[•*-]\s+/m) || 
           safeMatch(block, /^\d+\.\s+/m)
         ) {
-          // This is a list - process line by line to capture all formatting details
+          // This is a list - process line by line
           const listItems: string[] = [];
           let currentSection = '';
           const lines = block.split('\n');
@@ -95,17 +115,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
               // Parse the bullet and its content
               listItems.push(line);
             } 
-            // Check if this line has a dash/em-dash separator
-            else if (
-              safeMatch(line, /\s+—+\s+/) || 
-              safeMatch(line, /\s+–+\s+/) || 
-              safeMatch(line, /\s+-+\s+/)
-            ) {
-              sections.push({
-                type: 'dash-separator',
-                content: line
-              });
-            }
             // Regular line - either add to current paragraph or start a new one
             else {
               if (i > 0 && (
@@ -140,33 +149,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             });
           }
         } 
-        // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
-        else if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
-          const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
-          
-          if (sectionMatch) {
-            // This is a numbered section with a title
-            sections.push({
-              type: 'section',
-              number: sectionMatch[1] || '',
-              title: (sectionMatch[2] || '').trim(),
-              content: (sectionMatch[4] || '').trim()
-            });
-          } else {
-            // Regular paragraph
-            sections.push({
-              type: 'paragraph',
-              content: block
-            });
-          }
-        } 
-        else if (block.includes('**')) {
-          // This paragraph has some bold formatting but isn't a section header
-          sections.push({
-            type: 'formatted',
-            content: block
-          });
-        } 
         else {
           // Regular paragraph
           sections.push({
@@ -185,32 +167,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
     
     return sections;
-  };
-
-  // Render formatted text with proper HTML
-  const renderFormattedText = (text: string) => {
-    if (!text) return '';
-    
-    try {
-      // Replace markdown-style formatting with HTML tags
-      const formatted = text
-        // Bold text
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        // Italic text
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        // Em dashes and separators with proper spacing
-        .replace(/\s+(—+|–+|-+)\s+/g, ' <span class="text-gray-500 mx-2">$1</span> ')
-        // Headers that use markdown-style formatting (#)
-        .replace(/^(#{1,6})\s+(.+)$/gm, (_, level, text) => {
-          const headerLevel = level.length;
-          return `<h${headerLevel} class="text-xl font-bold mb-2">${text}</h${headerLevel}>`;
-        });
-      
-      return formatted;
-    } catch (e) {
-      console.error("Error formatting text:", e);
-      return text; // Return the original text if formatting fails
-    }
   };
 
   // Process bullet point to ensure proper display
@@ -284,16 +240,28 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="bg-white rounded-2xl shadow-lg p-8 border-l-4 border-blue-500"
+      className="bg-white rounded-2xl shadow-xl overflow-hidden"
     >
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Samenvatting</h2>
+      {/* Header with gradient background */}
+      <div className="relative bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 text-white">
+        <h2 className="text-2xl font-bold flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Samenvatting
+        </h2>
+        
+        {/* Copy button */}
         <MotionButton 
           variants={buttonVariants}
           whileHover="hover"
           whileTap="tap"
           onClick={copyToClipboard}
-          className="text-gray-500 hover:text-blue-600 transition-colors p-2 rounded-full hover:bg-blue-50"
+          className="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors"
           title="Kopiëren naar klembord"
           type="button"
         >
@@ -306,7 +274,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
               strokeWidth="2" 
               strokeLinecap="round" 
               strokeLinejoin="round" 
-              className="w-5 h-5 text-green-600"
+              className="w-5 h-5"
             >
               <path d="M20 6L9 17l-5-5"></path>
             </svg>
@@ -328,91 +296,71 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         </MotionButton>
       </div>
       
-      <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed">
-        <div className="space-y-4">
-          {sections.map((section, index) => {
-            try {
-              if (section.type === 'section') {
-                return (
-                  <div key={index} className="mb-6">
-                    <h3 className="text-lg font-semibold text-blue-700 mb-3 pb-1 border-b border-blue-100 flex items-center">
-                      {section.number && <span className="mr-1">{section.number}</span>}
-                      {section.title || ''}
-                    </h3>
-                    <div className="text-gray-700 leading-relaxed pl-1">
-                      {section.content}
+      {/* Content */}
+      <div className="p-8">
+        <div className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed">
+          <div className="space-y-6">
+            {sections.map((section, index) => {
+              try {
+                if (section.type === 'section') {
+                  return (
+                    <div key={index} className="mb-8">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        {section.number && (
+                          <span className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-700 rounded-full mr-3 text-sm font-bold">
+                            {parseInt(section.number)}
+                          </span>
+                        )}
+                        <span>{section.title || ''}</span>
+                      </h3>
+                      <div className="pl-11 text-gray-700 leading-relaxed">
+                        {section.content}
+                      </div>
                     </div>
-                  </div>
-                );
-              } else if (section.type === 'bullet-list') {
-                return (
-                  <div key={index} className="mb-4 ml-1">
-                    <ul className="space-y-3">
-                      {section.items?.map((item, itemIndex) => {
-                        const bulletSymbol = item.startsWith('•') ? '•' : 
-                                              item.startsWith('-') ? '–' : 
-                                              item.startsWith('*') ? '•' : '';
-                        
-                        return (
-                          <li key={itemIndex} className="flex">
-                            {bulletSymbol && (
-                              <span className="inline-block w-5 flex-shrink-0 text-blue-600 font-bold">{bulletSymbol}</span>
-                            )}
-                            <span 
-                              className="flex-grow"
-                              dangerouslySetInnerHTML={{ 
-                                __html: processBulletPoint(item) 
-                              }}
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                );
-              } else if (section.type === 'dash-separator') {
-                try {
-                  return (
-                    <div 
-                      key={index} 
-                      className="my-2 text-gray-700 flex items-center"
-                      dangerouslySetInnerHTML={{ 
-                        __html: section.content
-                          .replace(/\s+—+\s+/g, ' <span class="px-3 text-gray-400">—</span> ')
-                          .replace(/\s+–+\s+/g, ' <span class="px-3 text-gray-400">–</span> ')
-                          .replace(/\s+-+\s+/g, ' <span class="px-3 text-gray-400">-</span> ')
-                      }}
-                    />
                   );
-                } catch (e) {
-                  console.error("Error rendering dash separator:", e);
-                  return <div key={index} className="my-2">{section.content}</div>;
-                }
-              } else if (section.type === 'formatted') {
-                try {
+                } else if (section.type === 'bullet-list') {
                   return (
-                    <div 
-                      key={index} 
-                      className="mb-4"
-                      dangerouslySetInnerHTML={{ __html: renderFormattedText(section.content) }}
-                    />
+                    <div key={index} className="mb-6 pl-6">
+                      <ul className="space-y-4">
+                        {section.items?.map((item, itemIndex) => {
+                          const isBullet = item.startsWith('•') || item.startsWith('-') || item.startsWith('*');
+                          const isNumbered = safeMatch(item, /^\d+\.\s+/);
+                          
+                          return (
+                            <li key={itemIndex} className="flex items-start">
+                              {isBullet ? (
+                                <span className="flex-shrink-0 w-6 h-6 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
+                                  •
+                                </span>
+                              ) : isNumbered ? (
+                                <span className="flex-shrink-0 w-6 h-6 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mr-3 mt-0.5 text-sm font-medium">
+                                  {parseInt(item)}
+                                </span>
+                              ) : null}
+                              <span className="flex-grow">
+                                {isBullet ? 
+                                  item.replace(/^[•*-]\s+/, '') : 
+                                  item.replace(/^\d+\.\s+/, '')}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
                   );
-                } catch (e) {
-                  console.error("Error rendering formatted text:", e);
-                  return <div key={index} className="mb-4">{section.content}</div>;
+                } else {
+                  return (
+                    <p key={index} className="text-gray-700 leading-relaxed mb-4">
+                      {section.content}
+                    </p>
+                  );
                 }
-              } else {
-                return (
-                  <p key={index} className="mb-4">
-                    {section.content}
-                  </p>
-                );
+              } catch (e) {
+                console.error("Error rendering section:", e);
+                return <p key={index} className="mb-4 text-red-500">Error rendering content</p>;
               }
-            } catch (e) {
-              console.error("Error rendering section:", e);
-              return <p key={index} className="mb-4 text-red-500">Error rendering content</p>;
-            }
-          })}
+            })}
+          </div>
         </div>
       </div>
 
@@ -430,25 +378,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #9ca3af;
-        }
-        
-        /* Additional styling for enhanced summary rendering */
-        strong {
-          font-weight: 600;
-          color: #111827;
-        }
-        
-        em {
-          font-style: italic;
-          color: #374151;
-        }
-        
-        /* Improved styling for horizontal lines */
-        hr {
-          border: 0;
-          height: 1px;
-          background-color: #e5e7eb;
-          margin: 1.5rem 0;
         }
       `}</style>
     </MotionDiv>
