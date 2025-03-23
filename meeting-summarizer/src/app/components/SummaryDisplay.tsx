@@ -440,12 +440,16 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     </div>
                   );
                 } else if (section.type === 'raw-table' && section.tableLines) {
+                  // Capture tableLines in a local variable to solve TypeScript error
+                  const tableLines = section.tableLines;
+                  
                   // Render raw table (pre-formatted)
                   return (
                     <div key={index} className="mb-6 overflow-x-auto">
                       <table className="min-w-full border-collapse">
                         <tbody>
-                          {section.tableLines.map((line, lineIdx) => {
+                          {tableLines.map((line, lineIdx) => {
+                            // Keep the rest of your code exactly the same, just using tableLines instead of section.tableLines
                             if (line.includes('|')) {
                               // This is a table row
                               const cells = line.split('|')
@@ -456,7 +460,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                               
                               // Determine if this is a header row (usually the first row or follows a separator)
                               const isHeader = lineIdx === 0 || 
-                                (lineIdx > 0 && section.tableLines[lineIdx - 1].match(/^[\s\-|]+$/));
+                                (lineIdx > 0 && tableLines[lineIdx - 1].match(/^[\s\-|]+$/));
                               
                               if (isHeader) {
                                 return (
