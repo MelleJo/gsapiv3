@@ -150,6 +150,21 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
   };
 
+  const parseTable = (tableText: string): string[][] => {
+    const lines = tableText.split('\n');
+    const rows: string[][] = [];
+    lines.forEach(line => {
+      if (/^[\s\-|]+$/.test(line)) return;
+      if (line.includes('|')) {
+        const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell !== "");
+        if (cells.length > 0) {
+          rows.push(cells);
+        }
+      }
+    });
+    return rows;
+  };
+  
   const copyToClipboard = () => {
     const emailFriendlyText = createEmailFriendlyText(summary || '');
     navigator.clipboard.writeText(emailFriendlyText);
@@ -348,12 +363,32 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             {sections.map((section, index) => {
               try {
                 if (section.type === 'raw-table') {
-                  // For tables, just use a pre-formatted block to preserve alignment
+                  const rows = parseTable(section.content);
+                  if (rows.length === 0) return null;
                   return (
                     <div key={index} className="mb-6 overflow-x-auto">
-                      <pre className="whitespace-pre-wrap font-sans text-base border border-gray-300 rounded-lg p-4 bg-gray-50">
-                        {section.content}
-                      </pre>
+                      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                        <thead>
+                          <tr>
+                            {rows[0].map((cell, cellIndex) => (
+                              <th key={cellIndex} style={{ border: "1px solid #ccc", padding: "8px", backgroundColor: "#f9f9f9", textAlign: "left" }}>
+                                {cell}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.slice(1).map((row, rowIndex) => (
+                            <tr key={rowIndex}>
+                              {row.map((cell, cellIndex) => (
+                                <td key={cellIndex} style={{ border: "1px solid #ccc", padding: "8px", textAlign: "left" }}>
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   );
                 } else if (section.type === 'bullet-list' && section.items) {
