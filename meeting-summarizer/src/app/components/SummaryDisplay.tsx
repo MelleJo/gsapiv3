@@ -51,91 +51,105 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   const createEmailFriendlyText = (text: string): string => {
     if (!text) return '';
     
-    // Handle tables in a special way for email formatting
-    const formattedLines: string[] = [];
-    let insideTable = false;
-    let tableRows: string[][] = [];
+    const paragraphs = text.split(/\n\n+/);
+    const result: string[] = [];
     
-    // Process line by line
+    for (const paragraph of paragraphs) {
+      if (isTableSection(paragraph)) {
+        // It's a table, format it specially for email
+        result.push(formatTableForEmail(paragraph));
+      } else {
+        // Not a table, keep as is
+        result.push(paragraph);
+      }
+    }
+    
+    return result.join('\n\n');
+  };
+
+  // Check if a section of text is likely a table
+  const isTableSection = (text: string): boolean => {
     const lines = text.split('\n');
+    let pipeLineCount = 0;
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      
-      // Check if this line starts or is part of a table
+    for (const line of lines) {
       if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
-        if (!insideTable) {
-          // Starting a new table
-          insideTable = true;
-          tableRows = [];
-        }
+        pipeLineCount++;
+      }
+    }
+    
+    return pipeLineCount >= 2;
+  };
+
+  // Format a table specifically for email copying
+  const formatTableForEmail = (tableText: string): string => {
+    try {
+      const lines = tableText.split('\n');
+      const rows: string[][] = [];
+      
+      // Extract real content lines (no separators)
+      for (const line of lines) {
+        // Skip separator lines (only dashes, pipes and spaces)
+        if (line.match(/^[\s\-|]+$/)) continue;
         
-        // Skip separator lines (those with only dashes, pipes and spaces)
-        if (!line.match(/^[\s\-|]+$/)) {
-          // Process cells - split by | and clean up each cell
+        if (line.includes('|')) {
+          // This is a table row with pipe separators
           const cells = line.split('|')
             .map(cell => cell.trim())
             .filter(Boolean);
           
           if (cells.length > 0) {
-            tableRows.push(cells);
+            rows.push(cells);
           }
-        }
-      } else if (insideTable) {
-        // This line doesn't have pipes but we were inside a table,
-        // so the table has ended. Format and add the table.
-        formattedLines.push(formatTableForEmail(tableRows));
-        insideTable = false;
-        
-        // Add the current non-table line
-        if (line.trim()) {
-          formattedLines.push(line);
-        }
-      } else {
-        // Not part of a table
-        if (line.trim()) {
-          formattedLines.push(line);
+        } else if (line.trim()) {
+          // This is text but not a table row
+          rows.push([line.trim()]);
         }
       }
-    }
-    
-    // If we ended while still inside a table
-    if (insideTable && tableRows.length > 0) {
-      formattedLines.push(formatTableForEmail(tableRows));
-    }
-    
-    return formattedLines.join('\n\n');
-  };
-
-  // Format a table for email
-  const formatTableForEmail = (tableRows: string[][]): string => {
-    if (tableRows.length === 0) return '';
-    
-    // Get the maximum number of columns in any row
-    const maxColumns = Math.max(...tableRows.map(row => row.length));
-    
-    // Calculate the maximum width needed for each column
-    const columnWidths: number[] = Array(maxColumns).fill(0);
-    
-    tableRows.forEach(row => {
-      row.forEach((cell, cellIndex) => {
-        if (cell.length > columnWidths[cellIndex]) {
-          columnWidths[cellIndex] = Math.min(cell.length, 40); // Cap width at 40 chars
+      
+      if (rows.length === 0) return tableText;
+      
+      // Find the maximum width needed for each column
+      const columnCount = Math.max(...rows.map(row => row.length));
+      const columnWidths: number[] = Array(columnCount).fill(0);
+      
+      // Calculate width needed for each column (maximum length of any cell in that column)
+      rows.forEach(row => {
+        row.forEach((cell, idx) => {
+          if (cell.length > (columnWidths[idx] || 0)) {
+            // Set a reasonable maximum to prevent overly wide columns
+            columnWidths[idx] = Math.min(cell.length, 30);
+          }
+        });
+      });
+      
+      // Build a properly formatted plain-text table
+      let formattedTable = '';
+      let isHeader = true; // Treat first row as header
+      
+      rows.forEach((row, rowIdx) => {
+        // Format each cell in the row with proper padding
+        const formattedRow = row.map((cell, idx) => {
+          const width = columnWidths[idx] || 10;
+          return cell.padEnd(width);
+        }).join('  '); // Add space between columns
+        
+        formattedTable += formattedRow + '\n';
+        
+        // After the header row, add a separator line
+        if (isHeader && rowIdx === 0 && rows.length > 1) {
+          const separator = columnWidths.map(width => '-'.repeat(width)).join('  ');
+          formattedTable += separator + '\n';
+          isHeader = false;
         }
       });
-    });
-    
-    // Format each row with proper spacing
-    const formattedTable = tableRows.map(row => {
-      const formattedRow = row.map((cell, cellIndex) => {
-        // Use padEnd to create consistent column widths
-        return cell.padEnd(columnWidths[cellIndex] + 2);
-      }).join('');
       
-      return formattedRow;
-    }).join('\n');
-    
-    return formattedTable;
+      return formattedTable;
+    } catch (e) {
+      // If anything goes wrong with formatting, return the original
+      console.error("Error formatting table for email:", e);
+      return tableText;
+    }
   };
 
   const copyToClipboard = () => {
@@ -146,13 +160,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     setTimeout(() => {
       setCopied(false);
     }, 2000);
-  };
-
-  // Check if a section of text is likely a table
-  const isTableSection = (text: string): boolean => {
-    const lines = text.split('\n');
-    const pipeLines = lines.filter(line => line.includes('|') && (line.match(/\|/g) || []).length >= 2);
-    return pipeLines.length >= 2;
   };
 
   // Process the summary text to properly render formatting
