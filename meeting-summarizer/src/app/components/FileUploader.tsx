@@ -6,6 +6,9 @@ import { motion, MotionProps } from 'framer-motion';
 import { upload } from '@vercel/blob/client';
 import AudioConverter from './AudioConverter';
 
+// Toggle to enable or disable FFmpeg conversion
+const ENABLE_FFMPEG_CONVERSION = false; // Set to false to bypass FFmpeg completely
+
 // Define motion button component with proper typing
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
   disabled?: boolean;
@@ -262,6 +265,12 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
 
     setError('');
     
+    // If FFmpeg is disabled, upload directly
+    if (!ENABLE_FFMPEG_CONVERSION) {
+      handleUpload(selectedFile);
+      return;
+    }
+    
     // Check if this is a format that needs conversion
     const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
     
@@ -436,8 +445,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       </div>
       
       <div className="w-full">
-        {/* Audio Converter Component - only renders when needed */}
-        {isConverting && selectedFile && (
+        {/* Audio Converter Component - only renders when enabled and needed */}
+        {isConverting && selectedFile && ENABLE_FFMPEG_CONVERSION && (
           <div className="mt-4">
             <AudioConverter
               file={selectedFile}

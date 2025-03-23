@@ -24,7 +24,7 @@ export default function AudioConverter({
   file,
   onConversionComplete,
   onError,
-  targetFormat = 'mp3',
+  targetFormat = 'mp3', // Changed default from wav to mp3
   onProgress
 }: AudioConverterProps) {
   const [isConverting, setIsConverting] = useState<boolean>(false);
@@ -36,6 +36,9 @@ export default function AudioConverter({
   useEffect(() => {
     const loadFFmpeg = async () => {
       try {
+        // Get the current origin to construct absolute URLs
+        const origin = window.location.origin;
+        
         // Create FFmpeg instance with logging
         const ffmpeg = createFFmpeg({
           log: true,
@@ -45,11 +48,10 @@ export default function AudioConverter({
             setProgress(calculatedProgress);
             if (onProgress) onProgress(calculatedProgress);
           },
-          // Use local files instead of unpkg
-          corePath: '/ffmpeg/ffmpeg-core.js'
+          corePath: `${origin}/ffmpeg/ffmpeg-core.js`
         }) as FFmpegInstance;
         
-        console.log('Loading FFmpeg...');
+        console.log('Loading FFmpeg from:', `${origin}/ffmpeg/ffmpeg-core.js`);
         await ffmpeg.load();
         ffmpegRef.current = ffmpeg;
         setIsFFmpegLoaded(true);

@@ -28,14 +28,14 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <meta name="theme-color" content="#ffffff" />
         
-        {/* Required headers for FFmpeg WebAssembly to work */}
+        {/* Required for FFmpeg WebAssembly to work */}
         <meta httpEquiv="Cross-Origin-Opener-Policy" content="same-origin" />
         <meta httpEquiv="Cross-Origin-Embedder-Policy" content="require-corp" />
         
-        {/* Updated Content Security Policy that allows wasm */}
+        {/* Updated Content Security Policy with more permissive settings for WebAssembly */}
         <meta 
           httpEquiv="Content-Security-Policy" 
-          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' blob: https://*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' blob: https://* http://* data:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'"
         />
       </head>
       <body className="antialiased">
