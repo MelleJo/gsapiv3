@@ -1,8 +1,8 @@
 // src/app/components/SummaryDisplay.tsx
 'use client';
 
-import { useState } from 'react';
-import { motion, MotionProps } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence, MotionProps } from 'framer-motion';
 import React, { HTMLAttributes, forwardRef } from 'react';
 
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -44,11 +44,84 @@ const safeMatch = (text: string | undefined | null, pattern: RegExp): RegExpMatc
 
 export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
+  const [expandedTables, setExpandedTables] = useState<{[key: number]: boolean}>({});
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Process text to be email-friendly when copying
+  const createEmailFriendlyText = (text: string): string => {
+    if (!text) return '';
+    
+    const lines = text.split('\n');
+    const result: string[] = [];
+    
+    let inTable = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Skip empty lines
+      if (!line.trim()) {
+        result.push('');
+        continue;
+      }
+      
+      // Check if this line looks like part of a table (has multiple pipe characters)
+      if (line.includes('|') && (line.match(/\|/g) || []).length >= 3) {
+        // We're in a table now
+        if (!inTable) {
+          inTable = true;
+          // Add a blank line before table
+          if (result.length > 0 && result[result.length - 1] !== '') {
+            result.push('');
+          }
+        }
+        
+        // Skip separator lines (mostly dashes and pipes)
+        if (line.match(/^[\-\|\s]+$/)) {
+          continue;
+        }
+        
+        // Process the table row
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(cell => cell); // Remove empty cells
+        
+        // Join cells with tabs or proper spacing for email
+        const formattedRow = cells.join('\t');
+        result.push(formattedRow);
+      } else {
+        // Not a table row
+        if (inTable) {
+          inTable = false;
+          // Add a blank line after table
+          result.push('');
+        }
+        
+        // Add regular line
+        result.push(line);
+      }
+    }
+    
+    return result.join('\n');
+  };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(summary || '');
+    const emailFriendlyText = createEmailFriendlyText(summary || '');
+    navigator.clipboard.writeText(emailFriendlyText);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    
+    // Show success message and reset after 2 seconds
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
+  };
+
+  // Toggle expanded state for a specific table
+  const toggleTableExpanded = (index: number) => {
+    setExpandedTables(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
   };
 
   // Check if a block of text looks like a table
@@ -114,7 +187,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         // Check if this is a bullet list
         else if (
           safeMatch(block, /^[•*-]\s+/m) || 
-          safeMatch(block, /^\d+\.\s+/m)
+          safeMatch(block, /^\d+\.\s+/m) ||
+          safeMatch(block, /^•\s+/m)
         ) {
           // This is a list - process line by line
           const listItems: string[] = [];
@@ -128,7 +202,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             // Check if this line is a bullet point
             if (
               safeMatch(line, /^[•*-]\s+/) || 
-              safeMatch(line, /^\d+\.\s+/)
+              safeMatch(line, /^\d+\.\s+/) ||
+              safeMatch(line, /^•\s+/)
             ) {
               // If we already have accumulated text, add it as a paragraph
               if (currentSection.trim()) {
@@ -146,7 +221,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             else {
               if (i > 0 && (
                 safeMatch(lines[i-1], /^[•*-]\s+/) || 
-                safeMatch(lines[i-1], /^\d+\.\s+/)
+                safeMatch(lines[i-1], /^\d+\.\s+/) ||
+                safeMatch(lines[i-1], /^•\s+/)
               )) {
                 // This line is part of the previous bullet point
                 if (listItems.length > 0) {
@@ -219,6 +295,14 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
   };
 
+  // Auto-collapse large tables on initial render
+  useEffect(() => {
+    if (summary && contentRef.current) {
+      // Reset expanded state when summary changes
+      setExpandedTables({});
+    }
+  }, [summary]);
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-2xl shadow-lg p-6">
@@ -271,8 +355,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     >
       {/* Header with gradient background */}
       <div className="relative bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 text-white">
-        <h2 className="text-2xl font-bold flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <h2 className="text-2xl font-bold flex items-center pr-12">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
             <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -282,6 +366,20 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           Samenvatting
         </h2>
         
+        {/* Tooltip for copy button */}
+        <AnimatePresence>
+          {copied && (
+            <MotionDiv
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="absolute top-16 right-8 bg-white text-green-600 px-3 py-1 rounded-md shadow-md text-sm"
+            >
+              Gekopieerd!
+            </MotionDiv>
+          )}
+        </AnimatePresence>
+        
         {/* Copy button */}
         <MotionButton 
           variants={buttonVariants}
@@ -289,7 +387,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           whileTap="tap"
           onClick={copyToClipboard}
           className="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors"
-          title="Kopiëren naar klembord"
+          title="Kopiëren naar klembord (email-vriendelijk formaat)"
           type="button"
         >
           {copied ? (
@@ -325,7 +423,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       
       {/* Content */}
       <div className="p-8">
-        <div className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed">
+        <div 
+          ref={contentRef}
+          className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-gray-700 leading-relaxed"
+        >
           <div className="space-y-6">
             {sections.map((section, index) => {
               try {
@@ -346,13 +447,44 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     </div>
                   );
                 } else if (section.type === 'raw-table' && section.tableLines && section.tableLines.length > 0) {
-                  // Render a div that preserves the original formatting but adds styling
+                  // Determine if table should be expanded or collapsed
+                  const isExpanded = expandedTables[index] !== false;
+                  const tableLines = section.tableLines;
+                  
+                  // Calculate approximate table size to determine if we should auto-collapse
+                  const isLargeTable = tableLines.length > 10;
+                  
                   return (
-                    <div key={index} className="mb-8 overflow-x-auto">
-                      <div className="bg-white border border-gray-300 rounded-lg p-1">
+                    <div key={index} className="mb-8">
+                      {isLargeTable && (
+                        <div className="flex justify-end mb-2">
+                          <button 
+                            onClick={() => toggleTableExpanded(index)}
+                            className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                          >
+                            {isExpanded ? 'Inklappen' : 'Uitklappen'}
+                            <svg 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              width="16" 
+                              height="16" 
+                              viewBox="0 0 24 24" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                              className={`ml-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            >
+                              <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div className="overflow-x-auto rounded-lg border border-gray-300">
                         <table className="min-w-full text-sm">
                           <tbody>
-                            {section.tableLines.map((line, lineIndex) => {
+                            {tableLines.slice(0, isExpanded ? tableLines.length : Math.min(5, tableLines.length)).map((line, lineIndex) => {
                               // Check if this is a separator line (only dashes and pipes)
                               const isSeparator = line.match(/^[\-|\s]+$/);
                               
@@ -361,9 +493,13 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                                 return null;
                               }
                               
-                              // Process the line
-                              const cells = line.split('|').map(cell => cell.trim());
-                              const isHeader = lineIndex === 0 || (lineIndex === 1 && section.tableLines && section.tableLines[0].match(/^[\-|\s]+$/));
+                              // Check if this is likely a header row
+                              const isHeader = lineIndex === 0 || (lineIndex === 1 && tableLines[0].match(/^[\-|\s]+$/));
+                              
+                              // Process the line - use a regex to split by pipe but preserve URLs with http://
+                              const pipeRegex = /\|(?![^<]*>|[^<>]*<\/)/; // Don't split pipes inside HTML tags
+                              const parts = line.split(pipeRegex);
+                              const cells = parts.map(part => part.trim());
                               
                               return (
                                 <tr key={lineIndex} className={isHeader ? "bg-gray-100" : (lineIndex % 2 === 0 ? "bg-white" : "bg-gray-50")}>
@@ -373,20 +509,43 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                                       return null;
                                     }
                                     
+                                    // Clean up any remaining pipe characters and dashes used for decoration
+                                    const cleanContent = cell
+                                      .replace(/\|\|+/g, '')  // Remove multiple pipe characters
+                                      .replace(/^[-\|]+|[-\|]+$/g, '')  // Remove dashes/pipes at start/end
+                                      .trim();
+                                    
+                                    // Handle hyperlinks - look for text patterns that might be links 
+                                    // and convert them to actual links
+                                    const formattedContent = cleanContent.replace(
+                                      /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
+                                      (match) => {
+                                        if (match.startsWith('http')) {
+                                          return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
+                                        } else {
+                                          return `<span class="text-blue-600">${match}</span>`;
+                                        }
+                                      }
+                                    );
+                                    
                                     // If this is a header cell
                                     if (isHeader) {
                                       return (
-                                        <th key={cellIndex} className="border border-gray-300 px-3 py-2 text-left font-semibold">
-                                          {cell || '\u00A0'}
-                                        </th>
+                                        <th 
+                                          key={cellIndex} 
+                                          className="border border-gray-300 px-3 py-2 text-left font-semibold"
+                                          dangerouslySetInnerHTML={{ __html: formattedContent || '&nbsp;' }}
+                                        />
                                       );
                                     }
                                     
                                     // Return normal cell
                                     return (
-                                      <td key={cellIndex} className="border border-gray-300 px-3 py-2">
-                                        {cell || '\u00A0'}
-                                      </td>
+                                      <td 
+                                        key={cellIndex} 
+                                        className="border border-gray-300 px-3 py-2"
+                                        dangerouslySetInnerHTML={{ __html: formattedContent || '&nbsp;' }}
+                                      />
                                     );
                                   })}
                                 </tr>
@@ -394,6 +553,16 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                             })}
                           </tbody>
                         </table>
+                        
+                        {/* Show "Show more" button for large tables */}
+                        {!isExpanded && isLargeTable && tableLines.length > 5 && (
+                          <div 
+                            className="text-center py-2 bg-gray-50 border-t border-gray-300 text-sm text-blue-600 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => toggleTableExpanded(index)}
+                          >
+                            {tableLines.length - 5} meer rijen tonen...
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -404,6 +573,23 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                         {section.items?.map((item, itemIndex) => {
                           const isBullet = item.startsWith('•') || item.startsWith('-') || item.startsWith('*');
                           const isNumbered = safeMatch(item, /^\d+\.\s+/);
+                          
+                          // Cleanup and format the content with potential links
+                          const itemContent = (isBullet ? 
+                            item.replace(/^[•*-]\s+/, '') : 
+                            item.replace(/^\d+\.\s+/, ''));
+                            
+                          // Format links and important terms
+                          const formattedContent = itemContent.replace(
+                            /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
+                            (match) => {
+                              if (match.startsWith('http')) {
+                                return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
+                              } else {
+                                return `<span class="text-blue-600">${match}</span>`;
+                              }
+                            }
+                          );
                           
                           return (
                             <li key={itemIndex} className="flex items-start">
@@ -416,11 +602,10 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                                   {parseInt(item)}
                                 </span>
                               ) : null}
-                              <span className="flex-grow">
-                                {isBullet ? 
-                                  item.replace(/^[•*-]\s+/, '') : 
-                                  item.replace(/^\d+\.\s+/, '')}
-                              </span>
+                              <span 
+                                className="flex-grow"
+                                dangerouslySetInnerHTML={{ __html: formattedContent }}
+                              />
                             </li>
                           );
                         })}
@@ -428,10 +613,24 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     </div>
                   );
                 } else {
+                  // Format regular paragraphs, looking for links and key terms
+                  const formattedContent = section.content.replace(
+                    /\b(https?:\/\/\S+)|(\beenjaaarsbelang\b)|(\bnavrekeningsgegevens\b)|(\bpolicies\b)|(\bnavrekening\b)|(\bbedrijfsverzekering\b)/g, 
+                    (match) => {
+                      if (match.startsWith('http')) {
+                        return `<a href="${match}" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">${match}</a>`;
+                      } else {
+                        return `<span class="text-blue-600">${match}</span>`;
+                      }
+                    }
+                  );
+                  
                   return (
-                    <p key={index} className="text-gray-700 leading-relaxed mb-4">
-                      {section.content}
-                    </p>
+                    <p 
+                      key={index} 
+                      className="text-gray-700 leading-relaxed mb-4"
+                      dangerouslySetInnerHTML={{ __html: formattedContent }}
+                    />
                   );
                 }
               } catch (e) {
