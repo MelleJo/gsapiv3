@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     
     // Extract parameters
-    const { text, model = 'o3-mini', temperature = 0.3 } = body;
+    const { text, model = 'o3-mini', temperature = 0.3, prompt = '' } = body;
     
     // Validate request
     if (!text) {
@@ -29,8 +29,8 @@ export async function POST(request: Request) {
                           chatModels.find(m => m.id === 'o3-mini') || 
                           chatModels[0];
 
-    // Create an enhanced, detailed system prompt for meeting summaries
-    const meetingSummaryPrompt = `Maak een gedetailleerde, feitelijke samenvatting van deze vergadering. Gebruik actieve taal, niet passief. Identificeer deelnemers en hun standpunten. Vermeld beslissingen en actiepunten met verantwoordelijken. Structureer met duidelijke secties en gebruik opsommingstekens waar nodig. Wees gedetailleerd - langere transcripties verdienen uitgebreidere samenvattingen. Vermijd hallucinations. Vermeld belangrijke cijfers en voorbeelden. Wees objectief over tegenstrijdige standpunten. Organiseer onderwerpen chronologisch. Sluit af met "Genomen beslissingen" en "Actiepunten" secties.`;
+    // Use the provided prompt if available, otherwise fallback to default
+    const meetingSummaryPrompt = prompt || `Maak een gedetailleerde, feitelijke samenvatting van deze vergadering. Gebruik actieve taal, niet passief. Identificeer deelnemers en hun standpunten. Vermeld beslissingen en actiepunten met verantwoordelijken. Structureer met duidelijke secties en gebruik opsommingstekens waar nodig. Wees gedetailleerd - langere transcripties verdienen uitgebreidere samenvattingen. Vermijd hallucinations. Vermeld belangrijke cijfers en voorbeelden. Wees objectief over tegenstrijdige standpunten. Organiseer onderwerpen chronologisch. Sluit af met "Genomen beslissingen" en "Actiepunten" secties.`;
 
     let summary = '';
     let outputTokenCount = 0;
