@@ -39,9 +39,19 @@ const nextConfig = {
           {
             key: 'Cross-Origin-Embedder-Policy',
             value: 'require-corp',
-          },
+          }
         ],
       },
+      {
+        // Add cache control for FFmpeg files
+        source: '/ffmpeg/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          }
+        ],
+      }
     ];
   },
 };

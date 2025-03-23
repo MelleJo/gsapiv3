@@ -24,7 +24,7 @@ export default function AudioConverter({
   file,
   onConversionComplete,
   onError,
-  targetFormat = 'mp3', // Changed default from wav to mp3
+  targetFormat = 'mp3',
   onProgress
 }: AudioConverterProps) {
   const [isConverting, setIsConverting] = useState<boolean>(false);
@@ -45,7 +45,8 @@ export default function AudioConverter({
             setProgress(calculatedProgress);
             if (onProgress) onProgress(calculatedProgress);
           },
-          corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+          // Use local files instead of unpkg
+          corePath: '/ffmpeg/ffmpeg-core.js'
         }) as FFmpegInstance;
         
         console.log('Loading FFmpeg...');
@@ -74,7 +75,7 @@ export default function AudioConverter({
       if (!file || !ffmpegRef.current || !isFFmpegLoaded) return;
 
       // Check if the file is already in the target format
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
       
       // Only skip if it's already an optimized MP3 file (under 10MB)
       const skipConversion = 
