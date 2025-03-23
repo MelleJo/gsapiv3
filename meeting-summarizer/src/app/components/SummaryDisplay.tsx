@@ -27,13 +27,15 @@ interface SummaryDisplayProps {
 
 // Define types for sections
 type Section = {
-  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list' | 'dash-separator' | 'raw-table';
+  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list' | 'dash-separator' | 'raw-table' | 'table';
   content: string;
   items?: string[];
   level?: number;
   number?: string;
   title?: string;
   tableLines?: string[];
+  tableHeaders?: string[];
+  tableRows?: string[][];
 };
 
 // Safe regex matching function
@@ -51,65 +53,137 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   const createEmailFriendlyText = (text: string): string => {
     if (!text) return '';
     
-    // Split the summary into lines
-    const lines = text.split('\n');
+    // Split the text by sections (double newlines)
+    const sections = text.split(/\n\n+/);
     const result: string[] = [];
     
-    let inTable = false;
-    let tableStartIndex = -1;
-    
-    // Process each line
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // Skip empty lines but add them to output
-      if (!line) {
-        result.push('');
-        continue;
-      }
-      
-      // Check if this line might be part of a table (contains multiple pipe characters)
-      const pipeCount = (line.match(/\|/g) || []).length;
-      
-      if (pipeCount >= 3) {
-        // This might be a table row
-        if (!inTable) {
-          inTable = true;
-          tableStartIndex = result.length;
-          // Add a blank line before table if needed
-          if (result.length > 0 && result[result.length - 1] !== '') {
-            result.push('');
-          }
-        }
-        
-        // Skip purely decorative lines with just dashes and pipes
-        if (line.match(/^[-|\s]+$/)) {
-          continue;
-        }
-        
-        // Process row - split by pipes but keep bullet points and other formatting
-        const cells = line.split('|')
-          .map(cell => cell.trim())
-          .filter(cell => cell !== '');
-          
-        // Build a tab-delimited row, preserving bullets and other formatting
-        const formattedRow = cells.join('\t');
-        result.push(formattedRow);
+    for (const section of sections) {
+      // Check if this section contains a table
+      if (isTableSection(section)) {
+        // Format the table for email
+        const formattedTable = formatTableForEmail(section);
+        result.push(formattedTable);
       } else {
-        // Not a table row
-        if (inTable) {
-          inTable = false;
-          // Add a blank line after table
-          result.push('');
-        }
-        
-        // Add the line as is
-        result.push(line);
+        // Not a table, add as is
+        result.push(section);
       }
     }
     
-    // Join lines back together
-    return result.join('\n');
+    return result.join('\n\n');
+  };
+
+  // Check if a section of text is a table
+  const isTableSection = (text: string): boolean => {
+    const lines = text.split('\n');
+    
+    // A table should have multiple lines with pipe characters
+    let pipeLineCount = 0;
+    for (const line of lines) {
+      if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
+        pipeLineCount++;
+      }
+    }
+    
+    // If more than 2 lines contain pipes, it's likely a table
+    return pipeLineCount >= 2;
+  };
+
+  // Format a table for email copying
+  const formatTableForEmail = (tableText: string): string => {
+    const lines = tableText.split('\n');
+    const tableRows: string[][] = [];
+    
+    // Parse each line into cells
+    for (const line of lines) {
+      // Skip separator lines (those with only dashes, pipes and spaces)
+      if (line.match(/^[\s\-|]+$/)) continue;
+      
+      if (line.includes('|')) {
+        // Split by pipes and clean up cells
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(Boolean); // Remove empty cells
+        
+        if (cells.length > 0) {
+          tableRows.push(cells);
+        }
+      } else {
+        // Not a table row, could be a caption or other text
+        if (line.trim()) {
+          tableRows.push([line.trim()]);
+        }
+      }
+    }
+    
+    // Format with fixed width columns for email
+    if (tableRows.length > 0) {
+      // Get the maximum number of columns
+      const maxColumns = Math.max(...tableRows.map(row => row.length));
+      
+      // Calculate column widths (max width of each column)
+      const columnWidths: number[] = [];
+      for (let col = 0; col < maxColumns; col++) {
+        const colValues = tableRows.map(row => row[col] || '');
+        columnWidths[col] = Math.max(
+          ...colValues.map(value => value.length),
+          10 // Minimum column width
+        );
+      }
+      
+      // Format each row with fixed width columns
+      const formattedRows = tableRows.map(row => {
+        if (row.length === 1 && !isTableSection(row[0])) {
+          // This is a caption or non-table row
+          return row[0];
+        }
+        
+        // Format as a table row with proper spacing
+        return row.map((cell, idx) => {
+          const width = columnWidths[idx] || 10;
+          return cell.padEnd(width + 2);
+        }).join(' ');
+      });
+      
+      return formattedRows.join('\n');
+    }
+    
+    return tableText; // Fallback to original if parsing fails
+  };
+
+  // Parse table from text
+  const parseTable = (tableText: string): { headers: string[], rows: string[][] } => {
+    const lines = tableText.split('\n');
+    let headers: string[] = [];
+    const rows: string[][] = [];
+    
+    // Find table headers and rows
+    let headerFound = false;
+    
+    for (const line of lines) {
+      // Skip empty lines
+      if (!line.trim()) continue;
+      
+      // Skip separator lines (contain only pipes, dashes and spaces)
+      if (line.match(/^[\s\-|]+$/)) continue;
+      
+      // Process table row
+      if (line.includes('|')) {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(Boolean);
+        
+        if (cells.length > 0) {
+          if (!headerFound) {
+            headers = cells;
+            headerFound = true;
+          } else {
+            rows.push(cells);
+          }
+        }
+      }
+    }
+    
+    return { headers, rows };
   };
 
   const copyToClipboard = () => {
@@ -117,241 +191,96 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     navigator.clipboard.writeText(emailFriendlyText);
     setCopied(true);
     
-    // Show success message and reset after 2 seconds
     setTimeout(() => {
       setCopied(false);
     }, 2000);
-  };
-
-  // Toggle expanded state for a specific table
-  const toggleTableExpanded = (index: number) => {
-    setExpandedTables(prev => ({
-      ...prev,
-      [index]: !prev[index]
-    }));
-  };
-
-  // Detect tables with a more robust approach
-  const detectTables = (text: string): { tables: string[]; otherContent: string[] } => {
-    const lines = text.split('\n');
-    const tables: string[] = [];
-    const otherContent: string[] = [];
-    
-    let currentTable: string[] = [];
-    let inTable = false;
-    let nonTableContent = '';
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmedLine = line.trim();
-      
-      // Check if this line looks like part of a table
-      const pipeCount = (trimmedLine.match(/\|/g) || []).length;
-      const hasDashes = trimmedLine.includes('-');
-      
-      // Conditions for a line to be part of a table:
-      // 1. Has 3+ pipe characters
-      // 2. Is a header/separator line (pipes and dashes)
-      const isTableLine = pipeCount >= 3 || (pipeCount >= 1 && hasDashes && trimmedLine.match(/^[-|\s]+$/));
-      
-      if (isTableLine) {
-        // If we were collecting non-table content, add it
-        if (nonTableContent.trim()) {
-          otherContent.push(nonTableContent.trim());
-          nonTableContent = '';
-        }
-        
-        // Start or continue a table
-        if (!inTable) {
-          inTable = true;
-          currentTable = [];
-        }
-        
-        currentTable.push(line);
-      } else {
-        // Handle end of table
-        if (inTable) {
-          // Check if this is just a blank line within a table
-          if (!trimmedLine && i + 1 < lines.length) {
-            const nextLine = lines[i + 1].trim();
-            const nextPipeCount = (nextLine.match(/\|/g) || []).length;
-            
-            // If next line looks like a table row, keep in table
-            if (nextPipeCount >= 3) {
-              currentTable.push(line);
-              continue;
-            }
-          }
-          
-          // End the current table
-          if (currentTable.length > 0) {
-            tables.push(currentTable.join('\n'));
-          }
-          currentTable = [];
-          inTable = false;
-        }
-        
-        // Add to non-table content
-        nonTableContent += line + '\n';
-      }
-    }
-    
-    // Handle any remaining content
-    if (inTable && currentTable.length > 0) {
-      tables.push(currentTable.join('\n'));
-    }
-    
-    if (nonTableContent.trim()) {
-      otherContent.push(nonTableContent.trim());
-    }
-    
-    return { tables, otherContent };
   };
 
   // Process the summary text to properly render formatting
   const processSummary = (text: string): Section[] => {
     if (!text) return [];
     
-    let sections: Section[] = [];
+    // Split the text by paragraphs (double newlines)
+    const paragraphs = text.split(/\n\n+/);
+    const sections: Section[] = [];
     
-    try {
-      // First, extract tables and non-table content
-      const { tables, otherContent } = detectTables(text);
+    for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) continue;
       
-      // Add tables as raw-table sections
-      tables.forEach(tableText => {
-        const tableLines = tableText.split('\n').filter(line => line.trim());
-        sections.push({
-          type: 'raw-table',
-          content: tableText,
-          tableLines
-        });
-      });
+      // Check if this paragraph contains table-like content
+      const lines = paragraph.split('\n');
+      const tableLines = lines.filter(line => 
+        line.includes('|') && (line.match(/\|/g) || []).length >= 2
+      );
       
-      // Process non-table content
-      otherContent.forEach(block => {
-        if (!block || !block.trim()) return;
-        
-        // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
-        if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
-          const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
+      if (tableLines.length > 0 && tableLines.length >= lines.length * 0.5) {
+        // This paragraph is primarily a table
+        try {
+          // Try to parse as a structured table
+          const { headers, rows } = parseTable(paragraph);
           
-          if (sectionMatch) {
-            // This is a numbered section with a title
+          if (rows.length > 0) {
             sections.push({
-              type: 'section',
-              number: sectionMatch[1] || '',
-              title: (sectionMatch[2] || '').trim(),
-              content: (sectionMatch[4] || '').trim()
+              type: 'table',
+              content: paragraph,
+              tableHeaders: headers,
+              tableRows: rows
             });
           } else {
-            // Regular paragraph
+            // Fallback to raw table display
             sections.push({
-              type: 'paragraph',
-              content: block
+              type: 'raw-table',
+              content: paragraph,
+              tableLines: lines
             });
           }
-        } 
-        // Check if this is a bullet list
-        else if (
-          safeMatch(block, /^[•*-]\s+/m) || 
-          safeMatch(block, /^\d+\.\s+/m) ||
-          safeMatch(block, /^•\s+/m)
-        ) {
-          // This is a list - process line by line
-          const listItems: string[] = [];
-          let currentSection = '';
-          const lines = block.split('\n');
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]?.trim() || '';
-            if (!line) continue;
-            
-            // Check if this line is a bullet point
-            if (
-              safeMatch(line, /^[•*-]\s+/) || 
-              safeMatch(line, /^\d+\.\s+/) ||
-              safeMatch(line, /^•\s+/)
-            ) {
-              // If we already have accumulated text, add it as a paragraph
-              if (currentSection.trim()) {
-                sections.push({
-                  type: 'paragraph',
-                  content: currentSection.trim()
-                });
-                currentSection = '';
-              }
-              
-              // Parse the bullet and its content
-              listItems.push(line);
-            } 
-            // Regular line - either add to current paragraph or start a new one
-            else {
-              if (i > 0 && (
-                safeMatch(lines[i-1], /^[•*-]\s+/) || 
-                safeMatch(lines[i-1], /^\d+\.\s+/) ||
-                safeMatch(lines[i-1], /^•\s+/)
-              )) {
-                // This line is part of the previous bullet point
-                if (listItems.length > 0) {
-                  listItems[listItems.length - 1] += ' ' + line;
-                }
-              } else {
-                // Regular paragraph text
-                currentSection += (currentSection ? ' ' : '') + line;
-              }
-            }
-          }
-          
-          // Add any remaining text as a paragraph
-          if (currentSection.trim()) {
-            sections.push({
-              type: 'paragraph',
-              content: currentSection.trim()
-            });
-          }
-          
-          // Add the bullet list if we have items
-          if (listItems.length > 0) {
-            sections.push({
-              type: 'bullet-list',
-              content: block,
-              items: listItems
-            });
-          }
-        } 
-        else {
-          // Regular paragraph
+        } catch (e) {
+          // If parsing fails, treat as raw table
           sections.push({
-            type: 'paragraph',
-            content: block
+            type: 'raw-table',
+            content: paragraph,
+            tableLines: lines
           });
         }
-      });
-      
-      // Sort sections based on their position in the original text
-      sections.sort((a, b) => {
-        const posA = text.indexOf(a.content);
-        const posB = text.indexOf(b.content);
-        return posA - posB;
-      });
-    } catch (e) {
-      console.error("Error processing summary:", e);
-      // Fallback to simple paragraph rendering
-      return [{
-        type: 'paragraph',
-        content: text
-      }];
+      } 
+      // Check if this is a bullet list
+      else if (paragraph.match(/^[•*-]\s+/m) || paragraph.match(/^\d+\.\s+/m)) {
+        const items = paragraph
+          .split('\n')
+          .filter(line => line.trim().match(/^[•*-]\s+/) || line.trim().match(/^\d+\.\s+/));
+        
+        sections.push({
+          type: 'bullet-list',
+          content: paragraph,
+          items
+        });
+      } 
+      // Regular paragraph
+      else {
+        sections.push({
+          type: 'paragraph',
+          content: paragraph
+        });
+      }
     }
     
     return sections;
   };
 
-  // Auto-collapse large tables on initial render
+  // Auto-expand all tables on initial render
   useEffect(() => {
-    if (summary && contentRef.current) {
-      // Reset expanded state when summary changes
-      setExpandedTables({});
+    if (summary) {
+      // Set all tables to be expanded by default
+      const sections = processSummary(summary);
+      const newExpandedState: {[key: number]: boolean} = {};
+      
+      sections.forEach((section, index) => {
+        if (section.type === 'table' || section.type === 'raw-table') {
+          newExpandedState[index] = true;
+        }
+      });
+      
+      setExpandedTables(newExpandedState);
     }
   }, [summary]);
 
@@ -482,167 +411,118 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           <div className="space-y-6">
             {sections.map((section, index) => {
               try {
-                if (section.type === 'section') {
+                if (section.type === 'table' && section.tableHeaders && section.tableRows) {
+                  // Render structured table
                   return (
-                    <div key={index} className="mb-8">
-                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                        {section.number && (
-                          <span className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-700 rounded-full mr-3 text-sm font-bold">
-                            {parseInt(section.number)}
-                          </span>
-                        )}
-                        <span>{section.title || ''}</span>
-                      </h3>
-                      <div className="pl-11 text-gray-700 leading-relaxed">
-                        {section.content}
-                      </div>
+                    <div key={index} className="mb-6 overflow-x-auto">
+                      <table className="min-w-full border-collapse">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            {section.tableHeaders.map((header, idx) => (
+                              <th key={idx} className="py-2 px-4 border border-gray-300 text-left text-sm font-medium text-gray-700">
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.tableRows.map((row, rowIdx) => (
+                            <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                              {row.map((cell, cellIdx) => (
+                                <td key={cellIdx} className="py-2 px-4 border border-gray-300 text-sm text-gray-700">
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   );
-                } else if (section.type === 'raw-table' && section.tableLines && section.tableLines.length > 0) {
-                  // Determine if table should be expanded or collapsed
-                  const isExpanded = expandedTables[index] !== false;
-                  const tableLines = section.tableLines;
-                  
-                  // Calculate approximate table size to determine if we should auto-collapse
-                  const isLargeTable = tableLines.length > 10;
-                  
+                } else if (section.type === 'raw-table' && section.tableLines) {
+                  // Render raw table (pre-formatted)
                   return (
-                    <div key={index} className="mb-8">
-                      {isLargeTable && (
-                        <div className="flex justify-end mb-2">
-                          <button 
-                            onClick={() => toggleTableExpanded(index)}
-                            className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-                          >
-                            {isExpanded ? 'Inklappen' : 'Uitklappen'}
-                            <svg 
-                              xmlns="http://www.w3.org/2000/svg" 
-                              width="16" 
-                              height="16" 
-                              viewBox="0 0 24 24" 
-                              fill="none" 
-                              stroke="currentColor" 
-                              strokeWidth="2" 
-                              strokeLinecap="round" 
-                              strokeLinejoin="round"
-                              className={`ml-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                            >
-                              <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                      
-                      <div className="overflow-x-auto" style={{ overflowWrap: 'break-word', wordWrap: 'break-word' }}>
-                        <table className="w-full border-collapse border border-gray-300 text-sm table-fixed">
-                          <tbody>
-                            {tableLines.slice(0, isExpanded ? tableLines.length : Math.min(5, tableLines.length)).map((line, lineIndex) => {
-                              // Check if this is a separator line (only dashes and pipes)
-                              const isSeparator = line.match(/^[-|\s]+$/);
+                    <div key={index} className="mb-6 overflow-x-auto">
+                      <table className="min-w-full border-collapse">
+                        <tbody>
+                          {section.tableLines.map((line, lineIdx) => {
+                            if (line.includes('|')) {
+                              // This is a table row
+                              const cells = line.split('|')
+                                .map(cell => cell.trim())
+                                .filter(Boolean);
                               
-                              if (isSeparator) {
-                                // Skip separator lines entirely
-                                return null;
+                              if (cells.length === 0) return null;
+                              
+                              // Determine if this is a header row (usually the first row or follows a separator)
+                              const isHeader = lineIdx === 0 || 
+                                (lineIdx > 0 && section.tableLines[lineIdx - 1].match(/^[\s\-|]+$/));
+                              
+                              if (isHeader) {
+                                return (
+                                  <tr key={lineIdx} className="bg-gray-100">
+                                    {cells.map((cell, cellIdx) => (
+                                      <th key={cellIdx} className="py-2 px-4 border border-gray-300 text-left text-sm font-medium text-gray-700">
+                                        {cell}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                );
                               }
                               
-                              // Check if this is likely a header row
-                              const isHeader = lineIndex === 0 || (lineIndex === 1 && tableLines[0].match(/^[-|\s]+$/));
-                              
-                              // Replace consecutive ||| with a single |
-                              const cleanedLine = line.replace(/\|{2,}/g, '|');
-                              
-                              // Split the line by | but preserve bullet points
-                              const cells = cleanedLine.split('|').map(part => {
-                                // Preserve bullet points, clean up whitespace
-                                return part.trim();
-                              }).filter((cell, i, arr) => {
-                                // Skip first and last cell if empty
-                                return !(i === 0 && !cell) && !(i === arr.length - 1 && !cell);
-                              });
-                              
                               return (
-                                <tr key={lineIndex} className={isHeader ? "bg-gray-100" : (lineIndex % 2 === 0 ? "bg-white" : "bg-gray-50")}>
-                                  {cells.map((cell, cellIndex) => {
-                                    // If this is a header cell
-                                    if (isHeader) {
-                                      return (
-                                        <th 
-                                          key={cellIndex} 
-                                          className="border border-gray-300 px-3 py-2 text-left font-semibold"
-                                        >
-                                          {cell || '\u00A0'}
-                                        </th>
-                                      );
-                                    }
-                                    
-                                    // Return normal cell
-                                    return (
-                                      <td 
-                                        key={cellIndex} 
-                                        className="border border-gray-300 px-3 py-2 align-top"
-                                      >
-                                        {cell || '\u00A0'}
-                                      </td>
-                                    );
-                                  })}
+                                <tr key={lineIdx} className={lineIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                  {cells.map((cell, cellIdx) => (
+                                    <td key={cellIdx} className="py-2 px-4 border border-gray-300 text-sm text-gray-700">
+                                      {cell}
+                                    </td>
+                                  ))}
                                 </tr>
                               );
-                            })}
-                          </tbody>
-                        </table>
-                        
-                        {/* Show "Show more" button for large tables */}
-                        {!isExpanded && isLargeTable && tableLines.length > 5 && (
-                          <div 
-                            className="text-center py-2 bg-gray-50 border-t border-gray-300 text-sm text-blue-600 hover:bg-gray-100 cursor-pointer"
-                            onClick={() => toggleTableExpanded(index)}
-                          >
-                            {tableLines.length - 5} meer rijen tonen...
-                          </div>
-                        )}
-                      </div>
+                            } else if (line.match(/^[\s\-|]+$/)) {
+                              // This is a separator line, skip rendering
+                              return null;
+                            } else if (line.trim()) {
+                              // This is non-table text
+                              return (
+                                <tr key={lineIdx} className="bg-gray-50">
+                                  <td colSpan={20} className="py-2 px-4 border border-gray-300 text-sm text-gray-700">
+                                    {line}
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            return null;
+                          }).filter(Boolean)}
+                        </tbody>
+                      </table>
                     </div>
                   );
-                } else if (section.type === 'bullet-list') {
+                } else if (section.type === 'bullet-list' && section.items) {
                   return (
-                    <div key={index} className="mb-6 pl-6">
-                      <ul className="space-y-4">
-                        {section.items?.map((item, itemIndex) => {
-                          const isBullet = item.startsWith('•') || item.startsWith('-') || item.startsWith('*');
-                          const isNumbered = safeMatch(item, /^\d+\.\s+/);
-                          
-                          return (
-                            <li key={itemIndex} className="flex items-start">
-                              {isBullet ? (
-                                <span className="flex-shrink-0 w-6 h-6 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                                  •
-                                </span>
-                              ) : isNumbered ? (
-                                <span className="flex-shrink-0 w-6 h-6 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mr-3 mt-0.5 text-sm font-medium">
-                                  {parseInt(item)}
-                                </span>
-                              ) : null}
-                              <span className="flex-grow">
-                                {isBullet ? 
-                                  item.replace(/^[•*-]\s+/, '') : 
-                                  item.replace(/^\d+\.\s+/, '')}
-                              </span>
-                            </li>
-                          );
-                        })}
+                    <div key={index} className="mb-6">
+                      <ul className="list-disc pl-8 space-y-2">
+                        {section.items.map((item, itemIndex) => (
+                          <li key={itemIndex} className="text-gray-700">{item}</li>
+                        ))}
                       </ul>
                     </div>
                   );
                 } else {
                   return (
-                    <p key={index} className="text-gray-700 leading-relaxed mb-4">
+                    <p key={index} className="text-gray-700 mb-4 whitespace-pre-wrap">
                       {section.content}
                     </p>
                   );
                 }
               } catch (e) {
                 console.error("Error rendering section:", e);
-                return <p key={index} className="mb-4 text-red-500">Error rendering content</p>;
+                return (
+                  <div key={index} className="mb-6 bg-red-50 p-4 rounded-lg text-red-800">
+                    <p className="font-bold">Error rendering content:</p>
+                    <p className="whitespace-pre-wrap">{section.content}</p>
+                  </div>
+                );
               }
             })}
           </div>
