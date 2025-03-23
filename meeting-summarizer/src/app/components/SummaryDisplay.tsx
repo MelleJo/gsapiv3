@@ -27,12 +27,16 @@ interface SummaryDisplayProps {
 
 // Define types for sections
 type Section = {
-  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list' | 'dash-separator';
+  type: 'section' | 'formatted' | 'paragraph' | 'bullet-list' | 'dash-separator' | 'table';
   content: string;
   items?: string[];
   level?: number;
   number?: string;
   title?: string;
+  tableData?: {
+    headers: string[];
+    rows: string[][];
+  };
 };
 
 // Safe regex matching function
@@ -50,6 +54,43 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Function to detect and parse markdown tables
+  const parseMarkdownTable = (text: string): { headers: string[]; rows: string[][] } | null => {
+    // Split the text into lines
+    const lines = text.trim().split('\n');
+    
+    // Check if we have at least 3 lines (header, separator, and at least one data row)
+    if (lines.length < 3) return null;
+    
+    // Check if the first line contains pipe characters
+    if (!lines[0].includes('|')) return null;
+    
+    // Extract headers
+    const headerLine = lines[0].trim();
+    const headers = headerLine.split('|')
+      .map(cell => cell.trim())
+      .filter(cell => cell !== '');
+    
+    // Validate separator line
+    const separatorLine = lines[1].trim();
+    if (!separatorLine.includes('|') || !separatorLine.includes('-')) return null;
+    
+    // Extract data rows
+    const rows: string[][] = [];
+    for (let i = 2; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || !line.includes('|')) continue;
+      
+      const cells = line.split('|')
+        .map(cell => cell.trim())
+        .filter((cell, index) => index > 0 || cell !== ''); // Keep empty cells in the middle
+      
+      rows.push(cells);
+    }
+    
+    return { headers, rows };
+  };
+
   // Process the summary text to properly render formatting
   const processSummary = (text: string): Section[] => {
     if (!text) return [];
@@ -58,103 +99,123 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     let sections: Section[] = [];
     
     try {
-      // Split by double line breaks first
-      const blocks = text.split(/\n\n+/);
+      // First check for tables
+      const tableSections = text.split(/\n\n+/);
       
-      for (const block of blocks) {
-        if (!block || !block.trim()) continue; // Skip empty blocks
+      for (const section of tableSections) {
+        if (!section || !section.trim()) continue;
         
-        // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
-        if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
-          const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
-          
-          if (sectionMatch) {
-            // This is a numbered section with a title
+        // Check if this section contains a markdown table
+        if (section.includes('|') && section.includes('\n')) {
+          const tableData = parseMarkdownTable(section);
+          if (tableData && tableData.headers.length > 0 && tableData.rows.length > 0) {
             sections.push({
-              type: 'section',
-              number: sectionMatch[1] || '',
-              title: (sectionMatch[2] || '').trim(),
-              content: (sectionMatch[4] || '').trim()
+              type: 'table',
+              content: section,
+              tableData
             });
-          } else {
+            continue;
+          }
+        }
+        
+        // Split by double line breaks first
+        const blocks = section.split(/\n\n+/);
+        
+        for (const block of blocks) {
+          if (!block || !block.trim()) continue;
+          
+          // Check if this is a section header with pattern like "1. Deelnemers" or "2. Woning- en Hypotheekdetails"
+          if (safeMatch(block, /^(\d+\.\s*)([A-Z][^.]+)/)) {
+            const sectionMatch = safeMatch(block, /^(\d+\.\s*)([A-Z][^:]+)(:?)([^]*?)$/);
+            
+            if (sectionMatch) {
+              // This is a numbered section with a title
+              sections.push({
+                type: 'section',
+                number: sectionMatch[1] || '',
+                title: (sectionMatch[2] || '').trim(),
+                content: (sectionMatch[4] || '').trim()
+              });
+            } else {
+              // Regular paragraph
+              sections.push({
+                type: 'paragraph',
+                content: block
+              });
+            }
+          } 
+          // Check if this is a bullet list
+          else if (
+            safeMatch(block, /^[•*-]\s+/m) || 
+            safeMatch(block, /^\d+\.\s+/m)
+          ) {
+            // This is a list - process line by line
+            const listItems: string[] = [];
+            let currentSection = '';
+            const lines = block.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]?.trim() || '';
+              if (!line) continue;
+              
+              // Check if this line is a bullet point
+              if (
+                safeMatch(line, /^[•*-]\s+/) || 
+                safeMatch(line, /^\d+\.\s+/)
+              ) {
+                // If we already have accumulated text, add it as a paragraph
+                if (currentSection.trim()) {
+                  sections.push({
+                    type: 'paragraph',
+                    content: currentSection.trim()
+                  });
+                  currentSection = '';
+                }
+                
+                // Parse the bullet and its content
+                listItems.push(line);
+              } 
+              // Regular line - either add to current paragraph or start a new one
+              else {
+                if (i > 0 && (
+                  safeMatch(lines[i-1], /^[•*-]\s+/) || 
+                  safeMatch(lines[i-1], /^\d+\.\s+/)
+                )) {
+                  // This line is part of the previous bullet point
+                  if (listItems.length > 0) {
+                    listItems[listItems.length - 1] += ' ' + line;
+                  }
+                } else {
+                  // Regular paragraph text
+                  currentSection += (currentSection ? ' ' : '') + line;
+                }
+              }
+            }
+            
+            // Add any remaining text as a paragraph
+            if (currentSection.trim()) {
+              sections.push({
+                type: 'paragraph',
+                content: currentSection.trim()
+              });
+            }
+            
+            // Add the bullet list if we have items
+            if (listItems.length > 0) {
+              sections.push({
+                type: 'bullet-list',
+                content: block,
+                items: listItems
+              });
+            }
+          } 
+          else {
             // Regular paragraph
             sections.push({
               type: 'paragraph',
               content: block
             });
           }
-        } 
-        // Check if this is a bullet list
-        else if (
-          safeMatch(block, /^[•*-]\s+/m) || 
-          safeMatch(block, /^\d+\.\s+/m)
-        ) {
-          // This is a list - process line by line
-          const listItems: string[] = [];
-          let currentSection = '';
-          const lines = block.split('\n');
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]?.trim() || '';
-            if (!line) continue;
-            
-            // Check if this line is a bullet point
-            if (
-              safeMatch(line, /^[•*-]\s+/) || 
-              safeMatch(line, /^\d+\.\s+/)
-            ) {
-              // If we already have accumulated text, add it as a paragraph
-              if (currentSection.trim()) {
-                sections.push({
-                  type: 'paragraph',
-                  content: currentSection.trim()
-                });
-                currentSection = '';
-              }
-              
-              // Parse the bullet and its content
-              listItems.push(line);
-            } 
-            // Regular line - either add to current paragraph or start a new one
-            else {
-              if (i > 0 && (
-                safeMatch(lines[i-1], /^[•*-]\s+/) || 
-                safeMatch(lines[i-1], /^\d+\.\s+/)
-              )) {
-                // This line is part of the previous bullet point
-                if (listItems.length > 0) {
-                  listItems[listItems.length - 1] += ' ' + line;
-                }
-              } else {
-                // Regular paragraph text
-                currentSection += (currentSection ? ' ' : '') + line;
-              }
-            }
-          }
-          
-          // Add any remaining text as a paragraph
-          if (currentSection.trim()) {
-            sections.push({
-              type: 'paragraph',
-              content: currentSection.trim()
-            });
-          }
-          
-          // Add the bullet list if we have items
-          if (listItems.length > 0) {
-            sections.push({
-              type: 'bullet-list',
-              content: block,
-              items: listItems
-            });
-          }
-        } 
-        else {
-          // Regular paragraph
-          sections.push({
-            type: 'paragraph',
-            content: block
-          });
         }
       }
     } catch (e) {
@@ -316,6 +377,34 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                       <div className="pl-11 text-gray-700 leading-relaxed">
                         {section.content}
                       </div>
+                    </div>
+                  );
+                } else if (section.type === 'table' && section.tableData) {
+                  // Render a properly formatted HTML table
+                  return (
+                    <div key={index} className="mb-8 overflow-x-auto">
+                      <table className="min-w-full border-collapse border border-gray-300">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            {section.tableData.headers.map((header, headerIndex) => (
+                              <th key={headerIndex} className="border border-gray-300 px-4 py-2 text-left font-semibold">
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.tableData.rows.map((row, rowIndex) => (
+                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                              {row.map((cell, cellIndex) => (
+                                <td key={cellIndex} className="border border-gray-300 px-4 py-2">
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   );
                 } else if (section.type === 'bullet-list') {
