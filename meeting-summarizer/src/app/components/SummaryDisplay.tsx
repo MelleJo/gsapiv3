@@ -125,7 +125,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       
       // Build a properly formatted plain-text table
       let formattedTable = '';
-      let isHeader = true; // Treat first row as header
       
       rows.forEach((row, rowIdx) => {
         // Format each cell in the row with proper padding
@@ -137,10 +136,9 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         formattedTable += formattedRow + '\n';
         
         // After the header row, add a separator line
-        if (isHeader && rowIdx === 0 && rows.length > 1) {
+        if (rowIdx === 0 && rows.length > 1) {
           const separator = columnWidths.map(width => '-'.repeat(width)).join('  ');
           formattedTable += separator + '\n';
-          isHeader = false;
         }
       });
       
@@ -203,75 +201,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
     
     return sections;
-  };
-
-  // Render a table from text
-  const renderTable = (content: string, index: number) => {
-    try {
-      const lines = content.split('\n');
-      
-      // Filter out empty lines and separator lines
-      const contentLines = lines.filter(line => {
-        return line.trim() && !line.match(/^[\s\-|]+$/);
-      });
-      
-      // Parse the table structure
-      const rows = contentLines.map(line => {
-        if (line.includes('|')) {
-          const cells = line.split('|')
-            .map(cell => cell.trim())
-            .filter(Boolean);
-          return cells;
-        }
-        return [line]; // Non-table line as a single cell row
-      });
-      
-      // Determine if the first row should be a header
-      const hasHeader = rows.length > 0;
-      
-      return (
-        <div key={index} className="mb-6 overflow-x-auto">
-          <table className="min-w-full border-collapse table-auto">
-            {hasHeader && (
-              <thead>
-                <tr>
-                  {rows[0].map((cell, cellIndex) => (
-                    <th 
-                      key={cellIndex} 
-                      className="py-3 px-4 bg-gray-100 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border border-gray-300"
-                    >
-                      {cell}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            )}
-            <tbody>
-              {rows.slice(hasHeader ? 1 : 0).map((row, rowIndex) => (
-                <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  {row.map((cell, cellIndex) => (
-                    <td 
-                      key={cellIndex} 
-                      className="py-3 px-4 whitespace-pre-wrap border border-gray-300 text-sm text-gray-700"
-                    >
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    } catch (e) {
-      console.error("Error rendering table:", e);
-      // Fallback rendering as pre-formatted text
-      return (
-        <div key={index} className="mb-6 overflow-x-auto bg-gray-50 p-4 rounded-lg border border-gray-300">
-          <pre className="whitespace-pre-wrap text-sm text-gray-700">{content}</pre>
-        </div>
-      );
-    }
   };
 
   // Auto-expand all tables on initial render
@@ -419,7 +348,14 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             {sections.map((section, index) => {
               try {
                 if (section.type === 'raw-table') {
-                  return renderTable(section.content, index);
+                  // For tables, just use a pre-formatted block to preserve alignment
+                  return (
+                    <div key={index} className="mb-6 overflow-x-auto">
+                      <pre className="whitespace-pre-wrap font-sans text-base border border-gray-300 rounded-lg p-4 bg-gray-50">
+                        {section.content}
+                      </pre>
+                    </div>
+                  );
                 } else if (section.type === 'bullet-list' && section.items) {
                   return (
                     <div key={index} className="mb-6">
