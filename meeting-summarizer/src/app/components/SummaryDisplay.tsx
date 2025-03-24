@@ -89,53 +89,40 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       
       // Extract real content lines (no separators)
       for (const line of lines) {
-        // Skip separator lines (only dashes, pipes and spaces)
         if (line.match(/^[\s\-|]+$/)) continue;
-        
         if (line.includes('|')) {
-          // This is a table row with pipe separators
           const cells = line.split('|')
             .map(cell => cell.trim())
             .filter(Boolean);
-          
           if (cells.length > 0) {
             rows.push(cells);
           }
         } else if (line.trim()) {
-          // This is text but not a table row
           rows.push([line.trim()]);
         }
       }
       
       if (rows.length === 0) return tableText;
       
-      // Find the maximum width needed for each column
       const columnCount = Math.max(...rows.map(row => row.length));
       const columnWidths: number[] = Array(columnCount).fill(0);
       
-      // Calculate width needed for each column (maximum length of any cell in that column)
       rows.forEach(row => {
         row.forEach((cell, idx) => {
           if (cell.length > (columnWidths[idx] || 0)) {
-            // Set a reasonable maximum to prevent overly wide columns
             columnWidths[idx] = Math.min(cell.length, 30);
           }
         });
       });
       
-      // Build a properly formatted plain-text table
       let formattedTable = '';
       
       rows.forEach((row, rowIdx) => {
-        // Format each cell in the row with proper padding
         const formattedRow = row.map((cell, idx) => {
           const width = columnWidths[idx] || 10;
           return cell.padEnd(width);
-        }).join('  '); // Add space between columns
-        
+        }).join('  ');
         formattedTable += formattedRow + '\n';
-        
-        // After the header row, add a separator line
         if (rowIdx === 0 && rows.length > 1) {
           const separator = columnWidths.map(width => '-'.repeat(width)).join('  ');
           formattedTable += separator + '\n';
@@ -144,7 +131,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       
       return formattedTable;
     } catch (e) {
-      // If anything goes wrong with formatting, return the original
       console.error("Error formatting table for email:", e);
       return tableText;
     }
@@ -169,7 +155,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     const emailFriendlyText = createEmailFriendlyText(summary || '');
     navigator.clipboard.writeText(emailFriendlyText);
     setCopied(true);
-    
     setTimeout(() => {
       setCopied(false);
     }, 2000);
@@ -178,59 +163,43 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   // Process the summary text to properly render formatting
   const processSummary = (text: string): Section[] => {
     if (!text) return [];
-    
-    // Split the text by paragraphs (double newlines)
     const paragraphs = text.split(/\n\n+/);
     const sections: Section[] = [];
-    
     for (const paragraph of paragraphs) {
       if (!paragraph.trim()) continue;
-      
-      // Check if this paragraph contains table-like content
       if (isTableSection(paragraph)) {
-        // This paragraph is primarily a table
         sections.push({
           type: 'raw-table',
           content: paragraph
         });
-      } 
-      // Check if this is a bullet list
-      else if (paragraph.match(/^[•*-]\s+/m) || paragraph.match(/^\d+\.\s+/m)) {
+      } else if (paragraph.match(/^[•*-]\s+/m) || paragraph.match(/^\d+\.\s+/m)) {
         const items = paragraph
           .split('\n')
           .filter(line => line.trim().match(/^[•*-]\s+/) || line.trim().match(/^\d+\.\s+/));
-        
         sections.push({
           type: 'bullet-list',
           content: paragraph,
           items
         });
-      } 
-      // Regular paragraph
-      else {
+      } else {
         sections.push({
           type: 'paragraph',
           content: paragraph
         });
       }
     }
-    
     return sections;
   };
 
-  // Auto-expand all tables on initial render
   useEffect(() => {
     if (summary) {
-      // Set all tables to be expanded by default
       const sections = processSummary(summary);
       const newExpandedState: {[key: number]: boolean} = {};
-      
       sections.forEach((section, index) => {
         if (section.type === 'raw-table') {
           newExpandedState[index] = true;
         }
       });
-      
       setExpandedTables(newExpandedState);
     }
   }, [summary]);
@@ -271,11 +240,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     sections = processSummary(summary);
   } catch (e) {
     console.error("Failed to process summary:", e);
-    // Fallback to simple rendering
-    sections = [{
-      type: 'paragraph',
-      content: summary
-    }];
+    sections = [{ type: 'paragraph', content: summary }];
   }
 
   return (
@@ -367,21 +332,21 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                   if (rows.length === 0) return null;
                   return (
                     <div key={index} className="mb-6 overflow-x-auto">
-                      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                        <thead>
+                      <table className="min-w-full divide-y divide-gray-200 table-auto">
+                        <thead className="bg-blue-100">
                           <tr>
                             {rows[0].map((cell, cellIndex) => (
-                              <th key={cellIndex} style={{ border: "1px solid #ccc", padding: "8px", backgroundColor: "#f9f9f9", textAlign: "left" }}>
+                              <th key={cellIndex} className="px-4 py-2 text-left text-xs font-medium text-blue-800 uppercase tracking-wider">
                                 {cell}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="bg-white divide-y divide-gray-200">
                           {rows.slice(1).map((row, rowIndex) => (
-                            <tr key={rowIndex}>
+                            <tr key={rowIndex} className="hover:bg-gray-50">
                               {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} style={{ border: "1px solid #ccc", padding: "8px", textAlign: "left" }}>
+                                <td key={cellIndex} className="px-4 py-2 whitespace-nowrap text-sm text-gray-600">
                                   {cell}
                                 </td>
                               ))}
