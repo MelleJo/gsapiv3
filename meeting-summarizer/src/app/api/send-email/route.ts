@@ -9,11 +9,12 @@ interface EmailRequest {
   content: string;
   senderName?: string;
   additionalMessage?: string;
+  isHtml?: boolean;
 }
 
 export async function POST(request: Request) {
   try {
-    const { to, subject, content, senderName, additionalMessage } = await request.json() as EmailRequest;
+    const { to, subject, content, senderName, additionalMessage, isHtml } = await request.json() as EmailRequest;
     
     if (!to || !to.length || !subject || !content) {
       return NextResponse.json(
@@ -53,34 +54,51 @@ export async function POST(request: Request) {
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>${subject}</title>
           <style>
+            /* Email client safe styles */
             body { 
               font-family: Arial, sans-serif; 
               line-height: 1.6; 
-              color: #333; 
+              color: #333333; 
               max-width: 650px; 
               margin: 0 auto; 
               padding: 20px; 
             }
             .header { 
-              border-bottom: 1px solid #eee; 
+              border-bottom: 1px solid #eeeeee; 
               padding-bottom: 10px; 
               margin-bottom: 20px; 
             }
             .footer { 
               margin-top: 30px; 
               padding-top: 10px; 
-              border-top: 1px solid #eee; 
+              border-top: 1px solid #eeeeee; 
               font-size: 12px; 
-              color: #666; 
+              color: #666666; 
             }
             h2 { 
-              color: #444; 
+              color: #444444; 
+              margin: 0 0 10px 0;
+              font-size: 20px;
             }
-            .message-box {
-              background-color: #f9f9f9;
-              border-left: 4px solid #3b82f6;
-              padding: 15px;
-              margin: 20px 0;
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              margin: 10px 0;
+            }
+            th, td {
+              border: 1px solid #d1d5db;
+              padding: 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+            th {
+              background-color: #f3f4f6;
+              font-weight: 600;
+              color: #111827;
+            }
+            td {
+              background-color: #ffffff;
+              color: #111827;
             }
           </style>
         </head>
@@ -89,14 +107,10 @@ export async function POST(request: Request) {
             <h2>${subject}</h2>
           </div>
           
-          ${additionalMessage ? `
-          <div class="message-box">
-            <p>${additionalMessage}</p>
-          </div>
-          ` : ''}
+          ${additionalMessage || ''}
           
           <div class="content">
-            ${content.replace(/\n/g, '<br>')}
+            ${isHtml ? content : content.replace(/\n/g, '<br>')}
           </div>
           
           <div class="footer">
@@ -106,15 +120,29 @@ export async function POST(request: Request) {
       </html>
     `;
 
-    // Configure email options
+    // Create plain text version by stripping HTML
+    const createPlainText = (html: string): string => {
+      return html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove style tags
+        .replace(/<[^>]+>/g, '') // Remove HTML tags
+        .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .trim();
+    };
+
+    // Configure email options with both HTML and plain text versions
     const mailOptions = {
       from: process.env.EMAIL_FROM || 'Meeting Summarizer <noreply@meeting-summarizer.com>',
       to: to.join(', '),
       subject: subject,
       html: htmlContent,
-      text: additionalMessage 
-        ? `${subject}\n\n${additionalMessage}\n\n${content}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`
-        : `${subject}\n\n${content}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`,
+      text: createPlainText(htmlContent),
+      // Email client compatibility headers
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+      }
     };
 
     // Send the email

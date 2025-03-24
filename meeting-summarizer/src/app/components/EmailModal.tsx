@@ -63,16 +63,18 @@ export default function EmailModal({ isOpen, onClose, summary, transcription = '
         return;
       }
       
-      // Fallback - if no transcript, we'll just format the summary directly
-      // as a simple email without AI refinement
-      const formattedEmail = `Beste collega,
-
-Hierbij de samenvatting van onze recente vergadering:
-
-${summary}
-
-Met vriendelijke groet,
-${senderName || 'Super Kees Online'}`;
+      // Fallback - if no transcript, we'll format the summary directly with HTML
+      const formattedEmail = `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <p style="margin: 0 0 16px 0;">Beste collega,</p>
+          
+          <p style="margin: 0 0 16px 0;">Hierbij de samenvatting van onze recente vergadering:</p>
+          
+          ${summary}
+          
+          <p style="margin: 16px 0 0 0;">Met vriendelijke groet,<br>${senderName || 'Super Kees Online'}</p>
+        </div>
+      `;
       
       setEmailContent(formattedEmail);
     } catch (error) {
@@ -204,7 +206,10 @@ ${senderName || 'Super Kees Online'}`;
           subject,
           content: emailContent,
           senderName: senderName.trim() || undefined,
-          additionalMessage: additionalMessage.trim() || undefined
+          additionalMessage: additionalMessage.trim() ? 
+            `<p style="margin: 0 0 16px 0; color: #111827;">${additionalMessage.trim()}</p>` : 
+            undefined,
+          isHtml: true
         })
       });
       

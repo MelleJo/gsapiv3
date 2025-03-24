@@ -59,8 +59,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         // It's a table, format it specially for email
         result.push(formatTableForEmail(paragraph));
       } else {
-        // Not a table, keep as is
-        result.push(paragraph);
+        // Not a table, wrap in a paragraph
+        result.push(`<p style="margin: 0 0 16px 0; color: #111827;">${paragraph}</p>`);
       }
     }
     
@@ -81,72 +81,6 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     return pipeLineCount >= 2;
   };
 
-  // Format a table specifically for email copying
-  const formatTableForEmail = (tableText: string): string => {
-    try {
-      const tables = parseTable(tableText);
-      let formattedText = '';
-      
-      tables.forEach((table) => {
-        // Add section header and subtitle
-        formattedText += `${table.title}\n`;
-        formattedText += '='.repeat(table.title.length) + '\n';
-        if (table.subtitle) {
-          formattedText += `${table.subtitle}\n`;
-          formattedText += '-'.repeat(table.subtitle.length) + '\n';
-        }
-        formattedText += '\n';
-        
-        // Calculate column widths
-        const columnWidths = {
-          risk: 20,
-          discussed: 10,
-          details: 40,
-          action: 30,
-          actionFor: 20
-        };
-        
-        // Add headers
-        formattedText += [
-          table.headers[0].padEnd(columnWidths.risk),
-          table.headers[1].padEnd(columnWidths.discussed),
-          table.headers[2].padEnd(columnWidths.details),
-          table.headers[3].padEnd(columnWidths.action),
-          table.headers[4].padEnd(columnWidths.actionFor)
-        ].join(' | ') + '\n';
-        
-        // Add separator
-        formattedText += [
-          '-'.repeat(columnWidths.risk),
-          '-'.repeat(columnWidths.discussed),
-          '-'.repeat(columnWidths.details),
-          '-'.repeat(columnWidths.action),
-          '-'.repeat(columnWidths.actionFor)
-        ].join('-+-') + '\n';
-        
-        // Add rows
-        table.rows.forEach((row: TableRow) => {
-          const formattedRow = [
-            row.risk.padEnd(columnWidths.risk),
-            row.discussed.padEnd(columnWidths.discussed),
-            row.details.padEnd(columnWidths.details),
-            row.action.padEnd(columnWidths.action),
-            row.actionFor.padEnd(columnWidths.actionFor)
-          ].join(' | ');
-          
-          formattedText += formattedRow + '\n';
-        });
-        
-        formattedText += '\n\n';
-      });
-      
-      return formattedText;
-    } catch (e) {
-      console.error("Error formatting table for email:", e);
-      return tableText;
-    }
-  };
-
   interface TableRow {
     risk: string;
     discussed: string;
@@ -162,6 +96,76 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     headers: string[];
     rows: TableRow[];
   }
+
+  // Format a table for email with HTML
+  const formatTableForEmail = (tableText: string): string => {
+    try {
+      const tables = parseTable(tableText);
+      let formattedHtml = '';
+      
+      tables.forEach((table) => {
+        formattedHtml += `
+          <div style="margin-bottom: 24px;">
+            <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 8px 0;">
+              ${table.title}
+            </h3>
+            ${table.subtitle ? 
+              `<p style="font-size: 14px; color: #4B5563; margin: 0 0 16px 0;">
+                ${table.subtitle}
+              </p>` : ''
+            }
+            <table cellspacing="0" cellpadding="0" border="1" style="width: 100%; border-collapse: collapse; border: 1px solid #D1D5DB; font-size: 14px; margin: 0;">
+              <thead>
+                <tr style="background-color: #F3F4F6;">
+                  <th align="left" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827; font-weight: 600; width: 15%;">
+                    ${table.headers[0]}
+                  </th>
+                  <th align="center" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827; font-weight: 600; width: 10%;">
+                    ${table.headers[1]}
+                  </th>
+                  <th align="left" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827; font-weight: 600; width: 35%;">
+                    ${table.headers[2]}
+                  </th>
+                  <th align="left" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827; font-weight: 600; width: 25%;">
+                    ${table.headers[3]}
+                  </th>
+                  <th align="left" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827; font-weight: 600; width: 15%;">
+                    ${table.headers[4]}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                ${table.rows.map((row: TableRow) => `
+                  <tr style="background-color: #FFFFFF;">
+                    <td align="left" valign="top" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827;">
+                      ${row.risk}
+                    </td>
+                    <td align="center" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827;">
+                      ${row.discussed}
+                    </td>
+                    <td align="left" valign="top" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827;">
+                      ${row.details}
+                    </td>
+                    <td align="left" valign="top" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827;">
+                      ${row.action}
+                    </td>
+                    <td align="left" style="padding: 8px; border: 1px solid #D1D5DB; color: #111827;">
+                      ${row.actionFor}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+      
+      return formattedHtml;
+    } catch (e) {
+      console.error("Error formatting table for email:", e);
+      return tableText;
+    }
+  };
 
   const parseTable = (tableText: string): TableSection[] => {
     const sections: TableSection[] = [];
@@ -222,13 +226,35 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     return sections;
   };
   
-  const copyToClipboard = () => {
-    const emailFriendlyText = createEmailFriendlyText(summary || '');
-    navigator.clipboard.writeText(emailFriendlyText);
-    setCopied(true);
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+  const copyToClipboard = async () => {
+    try {
+      const emailFriendlyText = createEmailFriendlyText(summary || '');
+      
+      // Create a temporary element to hold the HTML content
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = emailFriendlyText;
+      
+      // Use the Clipboard API to copy HTML content
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([tempDiv.innerHTML], { type: 'text/html' }),
+          'text/plain': new Blob([tempDiv.innerText], { type: 'text/plain' })
+        })
+      ]);
+      
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      // Fallback to plain text
+      navigator.clipboard.writeText(summary || '');
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    }
   };
 
   // Process the summary text to properly render formatting
