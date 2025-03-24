@@ -87,44 +87,54 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       const tables = parseTable(tableText);
       let formattedText = '';
       
-      tables.forEach((table, index) => {
-        // Add table header
-        formattedText += `${table.type === 'zakelijk' ? 'ZAKELIJKE RISICO\'S' : 'PRIVÉ RISICO\'S'}\n`;
-        formattedText += '='.repeat(50) + '\n\n';
+      tables.forEach((table) => {
+        // Add section header and subtitle
+        formattedText += `${table.title}\n`;
+        formattedText += '='.repeat(table.title.length) + '\n';
+        if (table.subtitle) {
+          formattedText += `${table.subtitle}\n`;
+          formattedText += '-'.repeat(table.subtitle.length) + '\n';
+        }
+        formattedText += '\n';
         
         // Calculate column widths
-        const columnWidths = [20, 10, 40, 30, 20]; // Risico, Besproken, Details, Actie, Actie voor
+        const columnWidths = {
+          risk: 20,
+          discussed: 10,
+          details: 40,
+          action: 30,
+          actionFor: 20
+        };
         
         // Add headers
-        const headers = table.rows[0];
-        formattedText += headers.map((header, idx) => 
-          header.padEnd(columnWidths[idx])
-        ).join(' ') + '\n';
+        formattedText += [
+          table.headers[0].padEnd(columnWidths.risk),
+          table.headers[1].padEnd(columnWidths.discussed),
+          table.headers[2].padEnd(columnWidths.details),
+          table.headers[3].padEnd(columnWidths.action),
+          table.headers[4].padEnd(columnWidths.actionFor)
+        ].join(' | ') + '\n';
         
         // Add separator
-        formattedText += columnWidths.map(width => 
-          '-'.repeat(width)
-        ).join(' ') + '\n';
+        formattedText += [
+          '-'.repeat(columnWidths.risk),
+          '-'.repeat(columnWidths.discussed),
+          '-'.repeat(columnWidths.details),
+          '-'.repeat(columnWidths.action),
+          '-'.repeat(columnWidths.actionFor)
+        ].join('-+-') + '\n';
         
         // Add rows
-        table.rows.slice(1).forEach(row => {
-          formattedText += row.map((cell, idx) => {
-            // Word wrap for long content
-            const words = cell.split(' ');
-            let lines = [''];
-            let currentLine = 0;
-            
-            words.forEach(word => {
-              if ((lines[currentLine] + ' ' + word).length <= columnWidths[idx]) {
-                lines[currentLine] += (lines[currentLine] ? ' ' : '') + word;
-              } else {
-                currentLine++;
-                lines[currentLine] = word;
-              }
-            });
-            
-            return lines[0].padEnd(columnWidths[idx]);
-          }).join(' ') + '\n';
+        table.rows.forEach((row: TableRow) => {
+          const formattedRow = [
+            row.risk.padEnd(columnWidths.risk),
+            row.discussed.padEnd(columnWidths.discussed),
+            row.details.padEnd(columnWidths.details),
+            row.action.padEnd(columnWidths.action),
+            row.actionFor.padEnd(columnWidths.actionFor)
+          ].join(' | ');
+          
+          formattedText += formattedRow + '\n';
         });
         
         formattedText += '\n\n';
@@ -137,80 +147,79 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     }
   };
 
-  const parseTable = (tableText: string): { type: 'zakelijk' | 'prive', rows: string[][] }[] => {
-    const tables: { type: 'zakelijk' | 'prive', rows: string[][] }[] = [];
-    const lines = tableText.split('\n').filter(line => line.trim());
+  interface TableRow {
+    risk: string;
+    discussed: string;
+    details: string;
+    action: string;
+    actionFor: string;
+  }
+
+  interface TableSection {
+    type: 'zakelijk' | 'prive';
+    title: string;
+    subtitle?: string;
+    headers: string[];
+    rows: TableRow[];
+  }
+
+  const parseTable = (tableText: string): TableSection[] => {
+    const sections: TableSection[] = [];
+    let currentSection: TableSection | null = null;
     
-    let currentType: 'zakelijk' | 'prive' | null = null;
-    let currentTable: string[][] = [];
+    const lines = tableText.split('\n').map(line => line.trim()).filter(Boolean);
     
-    // Default headers if not provided
-    const defaultHeaders = ['Risico', 'Besproken', 'Bespreking Details', 'Actie', 'Actie voor'];
-    
-    lines.forEach(line => {
-      const trimmedLine = line.trim().toLowerCase();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       
-      // Check for table type headers
-      if (trimmedLine.includes('zakelijke risico')) {
-        if (currentTable.length > 0 && currentType) {
-          tables.push({ type: currentType, rows: [...currentTable] });
+      // Check for section headers
+      if (line.endsWith("Risico's:")) {
+        // If we have a current section, save it
+        if (currentSection?.rows.length) {
+          sections.push(currentSection);
         }
-        currentType = 'zakelijk';
-        currentTable = [defaultHeaders];
-        return;
-      }
-      if (trimmedLine.includes('privé risico') || trimmedLine.includes('prive risico')) {
-        if (currentTable.length > 0 && currentType) {
-          tables.push({ type: currentType, rows: [...currentTable] });
+        
+        currentSection = {
+          type: line.toLowerCase().includes('zakelijke') ? 'zakelijk' : 'prive',
+          title: line,
+          headers: ['Risico', 'Besproken', 'Bespreking Details', 'Actie', 'Actie voor'],
+          rows: []
+        };
+        
+        // Check for subtitle in next line
+        if (i + 1 < lines.length && lines[i + 1].startsWith('Tabel per')) {
+          currentSection.subtitle = lines[i + 1];
+          i++; // Skip subtitle line
         }
-        currentType = 'prive';
-        currentTable = [defaultHeaders];
-        return;
+        continue;
       }
-      
-      // Skip separator lines
-      if (line.trim().replace(/[\s\-|]/g, '') === '') return;
       
       // Process table rows
-      if (line.includes('|') && currentType) {
+      if (currentSection && line.includes('|')) {
         const cells = line.split('|')
           .map(cell => cell.trim())
-          .filter(cell => cell !== "");
+          .filter(Boolean);
         
-        if (cells.length > 0) {
-          // Ensure exactly 5 columns
-          while (cells.length < 5) cells.push('');
-          currentTable.push(cells.slice(0, 5));
+        if (cells.length >= 2) { // At least risk and status
+          const row = {
+            risk: cells[0] || '',
+            discussed: cells[1] || '',
+            details: cells[2] || '',
+            action: cells[3] || '',
+            actionFor: cells[4] || ''
+          };
+          
+          currentSection.rows.push(row);
         }
       }
-    });
-    
-    // Add the last table if exists
-    if (currentTable.length > 0 && currentType) {
-      tables.push({ type: currentType, rows: [...currentTable] });
     }
     
-    // If no tables were found, create a default one
-    if (tables.length === 0) {
-      const rows = tableText.split('\n')
-        .filter(line => line.trim() && line.includes('|'))
-        .map(line => {
-          const cells = line.split('|')
-            .map(cell => cell.trim())
-            .filter(cell => cell !== "");
-          while (cells.length < 5) cells.push('');
-          return cells.slice(0, 5);
-        });
-      
-      if (rows.length > 0) {
-        tables.push({
-          type: 'zakelijk',
-          rows: [defaultHeaders, ...rows]
-        });
-      }
+    // Add the last section if exists
+    if (currentSection?.rows.length) {
+      sections.push(currentSection);
     }
     
-    return tables;
+    return sections;
   };
   
   const copyToClipboard = () => {
@@ -395,34 +404,48 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     <div key={index} className="mb-6 space-y-8">
                       {tables.map((table, tableIndex) => (
                         <div key={tableIndex}>
-                          <h3 className="text-lg font-semibold mb-4 text-gray-900">
-                            {table.type === 'zakelijk' ? 'Zakelijke Risico\'s' : 'Privé Risico\'s'}
-                          </h3>
+                          <div className="mb-6">
+                            <div className="border-b-2 border-gray-300 pb-2 mb-4">
+                              <h3 className="text-lg font-semibold text-gray-900">
+                                {table.title}
+                              </h3>
+                              {table.subtitle && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {table.subtitle}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                           <div className="overflow-x-auto">
                             <div className="inline-block min-w-full align-middle">
-                              <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
+                              <table className="min-w-full border-collapse border border-gray-300 bg-white">
                                 <thead>
-                                  <tr className="bg-gradient-to-r from-blue-50 to-indigo-50">
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '150px' }}>Risico</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '100px' }}>Besproken</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '300px' }}>Bespreking Details</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '200px' }}>Actie</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900" style={{ minWidth: '150px' }}>Actie voor</th>
+                                  <tr>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '150px' }}>Risico</th>
+                                    <th scope="col" className="px-3 py-2 text-center text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '100px' }}>Besproken</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '300px' }}>Bespreking Details</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '200px' }}>Actie</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '150px' }}>Actie voor</th>
                                   </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                  {table.rows.slice(1).map((row: string[], rowIndex: number) => (
-                                    <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
-                                      {row.map((cell: string, cellIndex: number) => (
-                                        <td
-                                          key={cellIndex}
-                                          className={`px-6 py-4 text-sm text-gray-700 whitespace-pre-wrap ${
-                                            cellIndex < row.length - 1 ? 'border-r border-gray-200' : ''
-                                          }`}
-                                        >
-                                          {cell}
-                                        </td>
-                                      ))}
+                                <tbody>
+                                  {table.rows.map((row: TableRow, rowIndex: number) => (
+                                    <tr key={rowIndex} className="hover:bg-gray-50">
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.risk}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 text-center">
+                                        {row.discussed}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.details}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.action}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300">
+                                        {row.actionFor}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
