@@ -84,122 +84,133 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   // Format a table specifically for email copying
   const formatTableForEmail = (tableText: string): string => {
     try {
-      const lines = tableText.split('\n');
-      const rows: string[][] = [];
+      const tables = parseTable(tableText);
+      let formattedText = '';
       
-      // Extract real content lines (no separators)
-      for (const line of lines) {
-        if (line.match(/^[\s\-|]+$/)) continue;
-        if (line.includes('|')) {
-          const cells = line.split('|')
-            .map(cell => cell.trim())
-            .filter(Boolean);
-          if (cells.length > 0) {
-            rows.push(cells);
-          }
-        } else if (line.trim()) {
-          rows.push([line.trim()]);
-        }
-      }
-      
-      if (rows.length === 0) return tableText;
-      
-      const columnCount = Math.max(...rows.map(row => row.length));
-      const columnWidths: number[] = Array(columnCount).fill(0);
-      
-      rows.forEach(row => {
-        row.forEach((cell, idx) => {
-          if (cell.length > (columnWidths[idx] || 0)) {
-            columnWidths[idx] = Math.min(cell.length, 30);
-          }
+      tables.forEach((table, index) => {
+        // Add table header
+        formattedText += `${table.type === 'zakelijk' ? 'ZAKELIJKE RISICO\'S' : 'PRIVÉ RISICO\'S'}\n`;
+        formattedText += '='.repeat(50) + '\n\n';
+        
+        // Calculate column widths
+        const columnWidths = [20, 10, 40, 30, 20]; // Risico, Besproken, Details, Actie, Actie voor
+        
+        // Add headers
+        const headers = table.rows[0];
+        formattedText += headers.map((header, idx) => 
+          header.padEnd(columnWidths[idx])
+        ).join(' ') + '\n';
+        
+        // Add separator
+        formattedText += columnWidths.map(width => 
+          '-'.repeat(width)
+        ).join(' ') + '\n';
+        
+        // Add rows
+        table.rows.slice(1).forEach(row => {
+          formattedText += row.map((cell, idx) => {
+            // Word wrap for long content
+            const words = cell.split(' ');
+            let lines = [''];
+            let currentLine = 0;
+            
+            words.forEach(word => {
+              if ((lines[currentLine] + ' ' + word).length <= columnWidths[idx]) {
+                lines[currentLine] += (lines[currentLine] ? ' ' : '') + word;
+              } else {
+                currentLine++;
+                lines[currentLine] = word;
+              }
+            });
+            
+            return lines[0].padEnd(columnWidths[idx]);
+          }).join(' ') + '\n';
         });
+        
+        formattedText += '\n\n';
       });
       
-      let formattedTable = '';
-      
-      rows.forEach((row, rowIdx) => {
-        const formattedRow = row.map((cell, idx) => {
-          const width = columnWidths[idx] || 10;
-          return cell.padEnd(width);
-        }).join('  ');
-        formattedTable += formattedRow + '\n';
-        if (rowIdx === 0 && rows.length > 1) {
-          const separator = columnWidths.map(width => '-'.repeat(width)).join('  ');
-          formattedTable += separator + '\n';
-        }
-      });
-      
-      return formattedTable;
+      return formattedText;
     } catch (e) {
       console.error("Error formatting table for email:", e);
       return tableText;
     }
   };
 
-  const parseTable = (tableText: string): string[][] => {
-    // Split into lines and remove empty lines
+  const parseTable = (tableText: string): { type: 'zakelijk' | 'prive', rows: string[][] }[] => {
+    const tables: { type: 'zakelijk' | 'prive', rows: string[][] }[] = [];
     const lines = tableText.split('\n').filter(line => line.trim());
     
-    // Initialize result array
-    const rows: string[][] = [];
-    let currentRow: string[] = [];
-    let currentCell = '';
-    let isInCell = false;
+    let currentType: 'zakelijk' | 'prive' | null = null;
+    let currentTable: string[][] = [];
     
-    // Process each line
-    lines.forEach((line, lineIndex) => {
+    // Default headers if not provided
+    const defaultHeaders = ['Risico', 'Besproken', 'Bespreking Details', 'Actie', 'Actie voor'];
+    
+    lines.forEach(line => {
+      const trimmedLine = line.trim().toLowerCase();
+      
+      // Check for table type headers
+      if (trimmedLine.includes('zakelijke risico')) {
+        if (currentTable.length > 0 && currentType) {
+          tables.push({ type: currentType, rows: [...currentTable] });
+        }
+        currentType = 'zakelijk';
+        currentTable = [defaultHeaders];
+        return;
+      }
+      if (trimmedLine.includes('privé risico') || trimmedLine.includes('prive risico')) {
+        if (currentTable.length > 0 && currentType) {
+          tables.push({ type: currentType, rows: [...currentTable] });
+        }
+        currentType = 'prive';
+        currentTable = [defaultHeaders];
+        return;
+      }
+      
       // Skip separator lines
       if (line.trim().replace(/[\s\-|]/g, '') === '') return;
       
-      // Split line by pipes, keeping empty cells
-      const parts = line.split('|');
-      
-      // Process each part
-      parts.forEach((part, partIndex) => {
-        // Skip first and last empty parts from split
-        if ((partIndex === 0 || partIndex === parts.length - 1) && !part.trim()) return;
+      // Process table rows
+      if (line.includes('|') && currentType) {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(cell => cell !== "");
         
-        const trimmedPart = part.trim();
-        
-        // If this is a new cell
-        if (!isInCell) {
-          currentCell = trimmedPart;
-          isInCell = true;
-        } else {
-          // Append to current cell with a space
-          currentCell += ' ' + trimmedPart;
+        if (cells.length > 0) {
+          // Ensure exactly 5 columns
+          while (cells.length < 5) cells.push('');
+          currentTable.push(cells.slice(0, 5));
         }
-        
-        // If this is the last part or next part starts a new cell
-        if (partIndex === parts.length - 2 || (parts[partIndex + 1] && parts[partIndex + 1].trim())) {
-          if (currentCell.trim()) {
-            currentRow.push(currentCell.trim());
-          }
-          currentCell = '';
-          isInCell = false;
-        }
-      });
-      
-      // If this line completes a row
-      if (!isInCell && currentRow.length > 0) {
-        rows.push([...currentRow]);
-        currentRow = [];
       }
     });
     
-    // Handle any remaining row
-    if (currentRow.length > 0) {
-      rows.push(currentRow);
+    // Add the last table if exists
+    if (currentTable.length > 0 && currentType) {
+      tables.push({ type: currentType, rows: [...currentTable] });
     }
     
-    // Normalize the table to ensure all rows have the same number of columns
-    const maxColumns = Math.max(...rows.map(row => row.length));
-    return rows.map(row => {
-      while (row.length < maxColumns) {
-        row.push('');
+    // If no tables were found, create a default one
+    if (tables.length === 0) {
+      const rows = tableText.split('\n')
+        .filter(line => line.trim() && line.includes('|'))
+        .map(line => {
+          const cells = line.split('|')
+            .map(cell => cell.trim())
+            .filter(cell => cell !== "");
+          while (cells.length < 5) cells.push('');
+          return cells.slice(0, 5);
+        });
+      
+      if (rows.length > 0) {
+        tables.push({
+          type: 'zakelijk',
+          rows: [defaultHeaders, ...rows]
+        });
       }
-      return row;
-    });
+    }
+    
+    return tables;
   };
   
   const copyToClipboard = () => {
@@ -379,44 +390,47 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
             {sections.map((section, index) => {
               try {
                 if (section.type === 'raw-table') {
-                  const rows = parseTable(section.content);
-                  if (rows.length === 0) return null;
-                  const columnCount = Math.max(...rows.map(row => row.length));
+                  const tables = parseTable(section.content);
                   return (
-                    <div key={index} className="mb-6 overflow-x-auto">
-                      <div className="inline-block min-w-full align-middle">
-                        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                          <div className="grid" style={{ 
-                            gridTemplateColumns: `repeat(${rows[0].length}, minmax(180px, 1fr))`,
-                            gap: '1px',
-                            background: '#e5e7eb'
-                          }}>
-                            {/* Headers */}
-                            {rows[0].map((cell, cellIndex) => (
-                              <div
-                                key={cellIndex}
-                                className="sticky top-0 z-10 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 text-left text-sm font-semibold text-gray-900 flex items-center"
-                                style={{ minHeight: '48px' }}
-                              >
-                                {cell}
-                              </div>
-                            ))}
-                            
-                            {/* Body Cells */}
-                            {rows.slice(1).flatMap((row, rowIndex) => 
-                              row.map((cell, cellIndex) => (
-                                <div
-                                  key={`${rowIndex}-${cellIndex}`}
-                                  className="bg-white p-4 text-sm text-gray-700 whitespace-pre-wrap hover:bg-gray-50 transition-colors flex items-start"
-                                  style={{ minHeight: '48px' }}
-                                >
-                                  <div className="w-full">{cell}</div>
-                                </div>
-                              ))
-                            )}
+                    <div key={index} className="mb-6 space-y-8">
+                      {tables.map((table, tableIndex) => (
+                        <div key={tableIndex}>
+                          <h3 className="text-lg font-semibold mb-4 text-gray-900">
+                            {table.type === 'zakelijk' ? 'Zakelijke Risico\'s' : 'Privé Risico\'s'}
+                          </h3>
+                          <div className="overflow-x-auto">
+                            <div className="inline-block min-w-full align-middle">
+                              <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
+                                <thead>
+                                  <tr className="bg-gradient-to-r from-blue-50 to-indigo-50">
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '150px' }}>Risico</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '100px' }}>Besproken</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '300px' }}>Bespreking Details</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900 border-r border-gray-200" style={{ minWidth: '200px' }}>Actie</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-gray-900" style={{ minWidth: '150px' }}>Actie voor</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {table.rows.slice(1).map((row: string[], rowIndex: number) => (
+                                    <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
+                                      {row.map((cell: string, cellIndex: number) => (
+                                        <td
+                                          key={cellIndex}
+                                          className={`px-6 py-4 text-sm text-gray-700 whitespace-pre-wrap ${
+                                            cellIndex < row.length - 1 ? 'border-r border-gray-200' : ''
+                                          }`}
+                                        >
+                                          {cell}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
                   );
                 } else if (section.type === 'bullet-list' && section.items) {
