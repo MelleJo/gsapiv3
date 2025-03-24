@@ -5,7 +5,7 @@ import openai from '@/lib/openai';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 import { chatModels } from '@/lib/config';
 
-export const maxDuration = 60; // 60 seconds timeout
+export const maxDuration = 300; // 5 minutes timeout
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
