@@ -330,30 +330,42 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                 if (section.type === 'raw-table') {
                   const rows = parseTable(section.content);
                   if (rows.length === 0) return null;
+                  const columnCount = Math.max(...rows.map(row => row.length));
                   return (
-                    <div key={index} className="mb-6 overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-                      <table className="min-w-full divide-y divide-gray-200 border border-gray-200 table-fixed">
-                        <thead className="bg-gradient-to-r from-blue-50 to-indigo-50">
-                          <tr>
-                            {rows[0].map((cell, cellIndex) => (
-                              <th key={cellIndex} className="px-6 py-3 text-left text-sm font-semibold text-gray-900 uppercase tracking-wider border-b border-gray-200">
-                                {cell}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {rows.slice(1).map((row, rowIndex) => (
-                            <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="px-6 py-4 text-sm text-gray-700 break-words">
+                    <div key={index} className="mb-6 overflow-x-auto rounded-lg shadow-sm bg-white">
+                      <div className="inline-block min-w-full align-middle rounded-lg">
+                        <table className="min-w-full divide-y divide-gray-200 border-separate" style={{ borderSpacing: 0, borderCollapse: 'separate' }}>
+                          <thead>
+                            <tr>
+                              {rows[0].map((cell, cellIndex) => (
+                                <th
+                                  key={cellIndex}
+                                  className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 text-left text-sm font-semibold text-gray-900 first:rounded-tl-lg last:rounded-tr-lg border-b border-r border-gray-200 last:border-r-0"
+                                  style={{ minWidth: '120px' }}
+                                >
                                   {cell}
-                                </td>
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="bg-white">
+                            {rows.slice(1).map((row, rowIndex) => (
+                              <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
+                                {row.map((cell, cellIndex) => (
+                                  <td
+                                    key={cellIndex}
+                                    className={`px-4 py-3 text-sm text-gray-700 border-b border-r border-gray-200 last:border-r-0 align-top ${
+                                      rowIndex === rows.length - 2 ? 'border-b-0' : ''
+                                    }`}
+                                  >
+                                    {cell}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   );
                 } else if (section.type === 'bullet-list' && section.items) {
