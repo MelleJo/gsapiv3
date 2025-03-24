@@ -404,32 +404,30 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                     <div key={index} className="mb-6 space-y-8">
                       {tables.map((table, tableIndex) => (
                         <div key={tableIndex}>
-                          <div className="mb-6">
-                            <div className="border-b-2 border-gray-300 pb-2 mb-4">
-                              <h3 className="text-lg font-semibold text-gray-900">
-                                {table.title}
-                              </h3>
-                              {table.subtitle && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {table.subtitle}
-                                </p>
-                              )}
-                            </div>
+                          <div className="mb-4">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {table.title}
+                            </h3>
+                            {table.subtitle && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {table.subtitle}
+                              </p>
+                            )}
                           </div>
                           <div className="overflow-x-auto">
                             <div className="inline-block min-w-full align-middle">
-                              <table className="min-w-full border-collapse border border-gray-300 bg-white">
+                              <table className="min-w-full border-collapse border border-gray-300">
                                 <thead>
                                   <tr>
-                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '150px' }}>Risico</th>
-                                    <th scope="col" className="px-3 py-2 text-center text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '100px' }}>Besproken</th>
-                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '300px' }}>Bespreking Details</th>
-                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '200px' }}>Actie</th>
-                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300 bg-white" style={{ minWidth: '150px' }}>Actie voor</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '150px' }}>Risico</th>
+                                    <th scope="col" className="px-3 py-2 text-center text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '100px' }}>Besproken</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '300px' }}>Bespreking Details</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '200px' }}>Actie</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '150px' }}>Actie voor</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {table.rows.map((row: TableRow, rowIndex: number) => (
+                                  {table.rows.map((row, rowIndex) => (
                                     <tr key={rowIndex} className="hover:bg-gray-50">
                                       <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
                                         {row.risk}
