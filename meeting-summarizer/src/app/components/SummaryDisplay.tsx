@@ -137,18 +137,69 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   };
 
   const parseTable = (tableText: string): string[][] => {
-    const lines = tableText.split('\n');
+    // Split into lines and remove empty lines
+    const lines = tableText.split('\n').filter(line => line.trim());
+    
+    // Initialize result array
     const rows: string[][] = [];
-    lines.forEach(line => {
-      if (/^[\s\-|]+$/.test(line)) return;
-      if (line.includes('|')) {
-        const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell !== "");
-        if (cells.length > 0) {
-          rows.push(cells);
+    let currentRow: string[] = [];
+    let currentCell = '';
+    let isInCell = false;
+    
+    // Process each line
+    lines.forEach((line, lineIndex) => {
+      // Skip separator lines
+      if (line.trim().replace(/[\s\-|]/g, '') === '') return;
+      
+      // Split line by pipes, keeping empty cells
+      const parts = line.split('|');
+      
+      // Process each part
+      parts.forEach((part, partIndex) => {
+        // Skip first and last empty parts from split
+        if ((partIndex === 0 || partIndex === parts.length - 1) && !part.trim()) return;
+        
+        const trimmedPart = part.trim();
+        
+        // If this is a new cell
+        if (!isInCell) {
+          currentCell = trimmedPart;
+          isInCell = true;
+        } else {
+          // Append to current cell with a space
+          currentCell += ' ' + trimmedPart;
         }
+        
+        // If this is the last part or next part starts a new cell
+        if (partIndex === parts.length - 2 || (parts[partIndex + 1] && parts[partIndex + 1].trim())) {
+          if (currentCell.trim()) {
+            currentRow.push(currentCell.trim());
+          }
+          currentCell = '';
+          isInCell = false;
+        }
+      });
+      
+      // If this line completes a row
+      if (!isInCell && currentRow.length > 0) {
+        rows.push([...currentRow]);
+        currentRow = [];
       }
     });
-    return rows;
+    
+    // Handle any remaining row
+    if (currentRow.length > 0) {
+      rows.push(currentRow);
+    }
+    
+    // Normalize the table to ensure all rows have the same number of columns
+    const maxColumns = Math.max(...rows.map(row => row.length));
+    return rows.map(row => {
+      while (row.length < maxColumns) {
+        row.push('');
+      }
+      return row;
+    });
   };
   
   const copyToClipboard = () => {
@@ -332,39 +383,39 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                   if (rows.length === 0) return null;
                   const columnCount = Math.max(...rows.map(row => row.length));
                   return (
-                    <div key={index} className="mb-6 overflow-x-auto rounded-lg shadow-sm bg-white">
-                      <div className="inline-block min-w-full align-middle rounded-lg">
-                        <table className="min-w-full divide-y divide-gray-200 border-separate" style={{ borderSpacing: 0, borderCollapse: 'separate' }}>
-                          <thead>
-                            <tr>
-                              {rows[0].map((cell, cellIndex) => (
-                                <th
-                                  key={cellIndex}
-                                  className="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 text-left text-sm font-semibold text-gray-900 first:rounded-tl-lg last:rounded-tr-lg border-b border-r border-gray-200 last:border-r-0"
-                                  style={{ minWidth: '120px' }}
-                                >
-                                  {cell}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white">
-                            {rows.slice(1).map((row, rowIndex) => (
-                              <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
-                                {row.map((cell, cellIndex) => (
-                                  <td
-                                    key={cellIndex}
-                                    className={`px-4 py-3 text-sm text-gray-700 border-b border-r border-gray-200 last:border-r-0 align-top ${
-                                      rowIndex === rows.length - 2 ? 'border-b-0' : ''
-                                    }`}
-                                  >
-                                    {cell}
-                                  </td>
-                                ))}
-                              </tr>
+                    <div key={index} className="mb-6 overflow-x-auto">
+                      <div className="inline-block min-w-full align-middle">
+                        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                          <div className="grid" style={{ 
+                            gridTemplateColumns: `repeat(${rows[0].length}, minmax(180px, 1fr))`,
+                            gap: '1px',
+                            background: '#e5e7eb'
+                          }}>
+                            {/* Headers */}
+                            {rows[0].map((cell, cellIndex) => (
+                              <div
+                                key={cellIndex}
+                                className="sticky top-0 z-10 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 text-left text-sm font-semibold text-gray-900 flex items-center"
+                                style={{ minHeight: '48px' }}
+                              >
+                                {cell}
+                              </div>
                             ))}
-                          </tbody>
-                        </table>
+                            
+                            {/* Body Cells */}
+                            {rows.slice(1).flatMap((row, rowIndex) => 
+                              row.map((cell, cellIndex) => (
+                                <div
+                                  key={`${rowIndex}-${cellIndex}`}
+                                  className="bg-white p-4 text-sm text-gray-700 whitespace-pre-wrap hover:bg-gray-50 transition-colors flex items-start"
+                                  style={{ minHeight: '48px' }}
+                                >
+                                  <div className="w-full">{cell}</div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
