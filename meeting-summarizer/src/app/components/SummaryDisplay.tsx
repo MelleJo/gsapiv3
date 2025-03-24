@@ -331,12 +331,12 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                   const rows = parseTable(section.content);
                   if (rows.length === 0) return null;
                   return (
-                    <div key={index} className="mb-6 overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200 table-auto">
-                        <thead className="bg-blue-100">
+                    <div key={index} className="mb-6 overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                      <table className="min-w-full divide-y divide-gray-200 border border-gray-200 table-fixed">
+                        <thead className="bg-gradient-to-r from-blue-50 to-indigo-50">
                           <tr>
                             {rows[0].map((cell, cellIndex) => (
-                              <th key={cellIndex} className="px-4 py-2 text-left text-xs font-medium text-blue-800 uppercase tracking-wider">
+                              <th key={cellIndex} className="px-6 py-3 text-left text-sm font-semibold text-gray-900 uppercase tracking-wider border-b border-gray-200">
                                 {cell}
                               </th>
                             ))}
@@ -344,9 +344,9 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {rows.slice(1).map((row, rowIndex) => (
-                            <tr key={rowIndex} className="hover:bg-gray-50">
+                            <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
                               {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="px-4 py-2 whitespace-nowrap text-sm text-gray-600">
+                                <td key={cellIndex} className="px-6 py-4 text-sm text-gray-700 break-words">
                                   {cell}
                                 </td>
                               ))}
