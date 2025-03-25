@@ -5,11 +5,11 @@
  * by splitting them into manageable chunks for transcription.
  */
 
-// Maximum size limit for a single chunk in bytes (25MB for OpenAI's API)
-export const SIZE_LIMIT = 25 * 1024 * 1024;
+// Maximum size limit for a single chunk in bytes (10MB for better reliability)
+export const SIZE_LIMIT = 10 * 1024 * 1024;
 
 // Default chunk size for binary chunking (slightly under the limit)
-export const DEFAULT_CHUNK_SIZE = 24 * 1024 * 1024;
+export const DEFAULT_CHUNK_SIZE = 9.5 * 1024 * 1024;
 
 /**
  * Splits an audio blob into smaller chunks based on size constraints.

@@ -5,7 +5,10 @@ import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
 export const runtime = 'edge';
-export const maxDuration = 300; // 5 minutes max execution time
+export const maxDuration = 600; // 10 minutes max execution time
+
+// Split large files into smaller chunks (10MB)
+const CHUNK_SIZE = 10 * 1024 * 1024;
 
 // Configure timeout for fetch operations
 const FETCH_TIMEOUT = 120000; // 2 minutes
@@ -111,12 +114,17 @@ export async function POST(request: Request) {
       const originalBlob = await audioResponse.blob();
       console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
 
-      // Use the blob directly - conversion should happen client-side
+      // Always split into smaller chunks for better reliability
       const audioBlob = originalBlob;
       console.log(`Processing audio. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
 
-      // Split audio into chunks if needed
-      if (audioBlob.size > SIZE_LIMIT) {
+      // Force chunking for files over 10MB
+      if (audioBlob.size > CHUNK_SIZE) {
+        console.log(`Large file detected, forcing chunking with ${CHUNK_SIZE / (1024 * 1024)}MB chunks`);
+      }
+
+      // Always split into chunks for better reliability with large files
+      if (audioBlob.size > CHUNK_SIZE) {
         console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
         const audioChunks = await splitAudioBlob(audioBlob);
         console.log(`Split complete. Created ${audioChunks.length} chunks.`);
