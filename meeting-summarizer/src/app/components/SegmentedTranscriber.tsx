@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { splitAudioBlob, joinTranscriptions, SEGMENT_SIZE } from '@/lib/audioChunker';
+import { useState, useEffect, useCallback } from 'react';
+import { splitAudioBlob, joinTranscriptions, formatBytes } from '@/lib/audioChunker';
 import { upload } from '@vercel/blob/client';
 import { withTimeout } from '@/lib/utils';
 
@@ -20,7 +20,14 @@ interface SegmentStatus {
   transcription?: string;
   error?: string;
   progress: number;
+  retries: number;
 }
+
+const MAX_RETRIES = 3;
+const SEGMENT_SIZE = 2 * 1024 * 1024; // 2MB segments for greater reliability
+const CONCURRENT_LIMIT = 2; // Process 2 segments at a time
+const TIMEOUT_PER_SEGMENT = 120 * 1000; // 2 minutes per segment
+const DELAY_BETWEEN_SEGMENTS = 1500; // 1.5 seconds between segments
 
 export default function SegmentedTranscriber({
   audioFile,
@@ -32,93 +39,24 @@ export default function SegmentedTranscriber({
   const [segments, setSegments] = useState<SegmentStatus[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [overallProgress, setOverallProgress] = useState<number>(0);
+  const [activeSegments, setActiveSegments] = useState<number>(0);
 
-  // Start processing when audio file is provided
-  useEffect(() => {
-    if (audioFile && !isProcessing) {
-      processAudioFile(audioFile);
-    }
-  }, [audioFile]);
+  // Use useCallback to avoid recreating these functions on every render
+  const updateSegmentStatus = useCallback((segmentId: number, update: Partial<SegmentStatus>) => {
+    setSegments(prevSegments => 
+      prevSegments.map(segment => 
+        segment.id === segmentId ? { ...segment, ...update } : segment
+      )
+    );
+  }, []);
 
-  // Track overall progress across all segments
-  useEffect(() => {
-    if (segments.length === 0) return;
-    
-    const totalProgress = segments.reduce((sum, segment) => sum + segment.progress, 0);
-    const newProgress = Math.round(totalProgress / segments.length);
-    
-    setOverallProgress(newProgress);
-    if (onProgress) onProgress(newProgress);
-    
-    // Check if all segments are complete
-    const allCompleted = segments.every(s => s.status === 'completed');
-    if (allCompleted && segments.length > 0) {
-      // Combine all transcriptions
-      const transcriptions = segments
-        .sort((a, b) => a.id - b.id)
-        .map(s => s.transcription || '');
-      
-      const fullTranscription = joinTranscriptions(transcriptions);
-      onTranscriptionComplete(fullTranscription);
-    }
-    
-    // Check if any segment has an error
-    const errorSegment = segments.find(s => s.status === 'error');
-    if (errorSegment) {
-      onError(errorSegment.error || 'Error processing audio segment');
-    }
-  }, [segments]);
-
-  const processAudioFile = async (file: File) => {
-    try {
-      setIsProcessing(true);
-      console.log(`Processing audio file: ${file.name}, size: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
-      
-      // Split the file into segments
-      const audioBlobs = await splitAudioBlob(file, SEGMENT_SIZE);
-      console.log(`Split into ${audioBlobs.length} segments`);
-      
-      // Initialize segment statuses
-      const initialSegments: SegmentStatus[] = audioBlobs.map((_, index) => ({
-        id: index,
-        status: 'pending',
-        progress: 0
-      }));
-      setSegments(initialSegments);
-      
-      // Process each segment (limit to 2 concurrent segments)
-      const CONCURRENT_LIMIT = 2;
-      for (let i = 0; i < audioBlobs.length; i += CONCURRENT_LIMIT) {
-        const segmentGroup = audioBlobs.slice(i, i + CONCURRENT_LIMIT);
-        const segmentIds = Array.from({ length: segmentGroup.length }, (_, idx) => i + idx);
-        
-        // Process group in parallel
-        await Promise.all(
-          segmentGroup.map((blob, groupIndex) => 
-            processSegment(blob, segmentIds[groupIndex], file.name)
-          )
-        );
-        
-        // Add a small delay between groups
-        if (i + CONCURRENT_LIMIT < audioBlobs.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    } catch (error) {
-      console.error('Audio processing error:', error);
-      onError(`Failed to process audio file: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const processSegment = async (blob: Blob, segmentId: number, originalFileName: string) => {
+  const processSegment = useCallback(async (blob: Blob, segmentId: number, originalFileName: string): Promise<void> => {
     try {
       // Update segment status to uploading
       updateSegmentStatus(segmentId, { status: 'uploading', progress: 10 });
       
       // Create a unique segment name
-      const segmentName = `segment_${segmentId}_${Date.now()}_${originalFileName}`;
+      const segmentName = `segment_${segmentId}_${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       
       // Upload the segment
       const segmentBlob = await upload(segmentName, blob, {
@@ -152,7 +90,7 @@ export default function SegmentedTranscriber({
             model
           })
         }),
-        90000, // 90 second timeout
+        TIMEOUT_PER_SEGMENT,
         `Segment ${segmentId} processing timed out`
       );
       
@@ -176,28 +114,183 @@ export default function SegmentedTranscriber({
       
     } catch (error) {
       console.error(`Segment ${segmentId} error:`, error);
-      updateSegmentStatus(segmentId, { 
-        status: 'error', 
-        error: error instanceof Error ? error.message : String(error),
-        progress: 0
-      });
+      
+      // Check if we should retry
+      const segment = segments.find(s => s.id === segmentId);
+      if (segment && segment.retries < MAX_RETRIES) {
+        console.log(`Retrying segment ${segmentId}, attempt ${segment.retries + 1} of ${MAX_RETRIES}`);
+        updateSegmentStatus(segmentId, { 
+          status: 'pending',
+          retries: segment.retries + 1,
+          progress: 0,
+          error: `Retry ${segment.retries + 1}/${MAX_RETRIES}: ${error instanceof Error ? error.message : String(error)}`
+        });
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_SEGMENTS * (segment.retries + 1)));
+        
+        // Retry processing this segment
+        await processSegment(blob, segmentId, originalFileName);
+      } else {
+        // Mark as error if we've exhausted all retries
+        updateSegmentStatus(segmentId, { 
+          status: 'error', 
+          error: error instanceof Error ? error.message : String(error),
+          progress: 0
+        });
+      }
+    } finally {
+      setActiveSegments(prev => Math.max(0, prev - 1));
     }
-  };
+  }, [segments, updateSegmentStatus]);
 
-  const updateSegmentStatus = (segmentId: number, update: Partial<SegmentStatus>) => {
-    setSegments(prevSegments => 
-      prevSegments.map(segment => 
-        segment.id === segmentId ? { ...segment, ...update } : segment
-      )
-    );
-  };
+  // Function to sequentially process segments
+  const processSegmentsSequentially = useCallback(async (
+    blobs: Blob[], 
+    fileName: string
+  ) => {
+    const maxConcurrent = blobs.length > 20 ? 1 : CONCURRENT_LIMIT; // Use single concurrency for very large files
+    let completedSegments = 0;
+    let failedSegments = 0;
+    
+    try {
+      // Process segments in groups to maintain concurrency limit
+      for (let i = 0; i < blobs.length; i += maxConcurrent) {
+        // Take a group of segments up to the concurrency limit
+        const groupSize = Math.min(maxConcurrent, blobs.length - i);
+        const groupIndices = Array.from({ length: groupSize }, (_, idx) => i + idx);
+        
+        console.log(`Processing segment group ${i / maxConcurrent + 1}: segments ${groupIndices.map(idx => idx + 1).join(', ')}`);
+        
+        // Start processing all segments in this group
+        setActiveSegments(prev => prev + groupSize);
+        
+        // Create all the processing promises
+        const groupPromises = groupIndices.map(idx => {
+          const segment = segments[idx];
+          // Only process pending segments
+          if (segment.status === 'pending') {
+            return processSegment(blobs[idx], idx, fileName);
+          }
+          return Promise.resolve(); // Skip segments that are not pending
+        });
+        
+        // Wait for all segments in this group to complete
+        await Promise.all(groupPromises);
+        
+        // Count completed and failed segments
+        const currentSegments = segments.slice(0, i + groupSize);
+        completedSegments = currentSegments.filter(s => s.status === 'completed').length;
+        failedSegments = currentSegments.filter(s => s.status === 'error').length;
+        
+        // Check if we should continue
+        if (failedSegments > Math.ceil(blobs.length * 0.3)) { // More than 30% failed
+          throw new Error(`Too many segment failures: ${failedSegments} out of ${currentSegments.length} segments failed`);
+        }
+        
+        // Wait a bit before starting the next group
+        if (i + groupSize < blobs.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_SEGMENTS));
+        }
+      }
+      
+      // Final check after all segments are processed
+      const allCompleted = segments.filter(s => s.status === 'completed').length;
+      const allFailed = segments.filter(s => s.status === 'error').length;
+      
+      if (allFailed > Math.ceil(blobs.length * 0.3)) { // More than 30% failed
+        throw new Error(`Too many segment failures: ${allFailed} out of ${blobs.length} segments failed`);
+      }
+      
+      // Generate final transcription
+      const transcriptions = segments
+        .filter(s => s.status === 'completed')
+        .sort((a, b) => a.id - b.id)
+        .map(s => s.transcription || '');
+      
+      if (transcriptions.length === 0) {
+        throw new Error('No segments were successfully transcribed');
+      }
+      
+      // Join the transcriptions
+      const fullTranscription = joinTranscriptions(transcriptions);
+      
+      // Report success
+      console.log(`Transcription complete: ${allCompleted} of ${blobs.length} segments successful (${allFailed} failed)`);
+      
+      // If some segments failed, add a note to the transcription
+      let finalTranscription = fullTranscription;
+      if (allFailed > 0) {
+        finalTranscription = `[Let op: ${allFailed} van de ${blobs.length} segmenten konden niet worden verwerkt. De transcriptie is mogelijk incompleet.]\n\n${fullTranscription}`;
+      }
+      
+      onTranscriptionComplete(finalTranscription);
+      
+    } catch (error) {
+      console.error('Error processing segments:', error);
+      onError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [segments, processSegment, onTranscriptionComplete, onError]);
+
+  // Start processing when audio file is provided
+  useEffect(() => {
+    if (audioFile && !isProcessing) {
+      processAudioFile(audioFile);
+    }
+  }, [audioFile, isProcessing]);
+
+  // Track overall progress across all segments
+  useEffect(() => {
+    if (segments.length === 0) return;
+    
+    const totalProgress = segments.reduce((sum, segment) => sum + segment.progress, 0);
+    const newProgress = Math.round(totalProgress / segments.length);
+    
+    setOverallProgress(newProgress);
+    if (onProgress) onProgress(newProgress);
+    
+  }, [segments, onProgress]);
+
+  // Main function to process audio file
+  async function processAudioFile(file: File) {
+    try {
+      setIsProcessing(true);
+      console.log(`Processing audio file: ${file.name}, size: ${formatBytes(file.size)}`);
+      
+      // Split the file into segments
+      const audioBlobs = await splitAudioBlob(file, SEGMENT_SIZE);
+      console.log(`Split into ${audioBlobs.length} segments`);
+      
+      // Initialize segment statuses
+      const initialSegments: SegmentStatus[] = audioBlobs.map((_, index) => ({
+        id: index,
+        status: 'pending',
+        progress: 0,
+        retries: 0
+      }));
+      setSegments(initialSegments);
+      
+      // Start processing segments
+      await processSegmentsSequentially(audioBlobs, file.name);
+      
+    } catch (error) {
+      console.error('Audio processing error:', error);
+      onError(`Failed to process audio file: ${error instanceof Error ? error.message : String(error)}`);
+      setIsProcessing(false);
+    }
+  }
 
   return (
     <div className="segmented-transcriber">
       {isProcessing && (
         <div className="transcription-progress">
           <div className="mb-2 text-sm text-neutral-600">
-            Processing audio in segments ({overallProgress}%)
+            {activeSegments > 0 ? 
+              `Verwerken van ${segments.length} segmenten (${activeSegments} actief, ${overallProgress}% totaal voltooid)` : 
+              `Verwerking audio in segmenten (${overallProgress}%)`
+            }
           </div>
           
           <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
@@ -208,7 +301,7 @@ export default function SegmentedTranscriber({
           </div>
           
           {/* Segment progress bars */}
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
             {segments.map((segment) => (
               <div key={segment.id} className="flex items-center">
                 <div className="w-8 flex-shrink-0 text-xs text-neutral-500">
@@ -219,20 +312,23 @@ export default function SegmentedTranscriber({
                     <div 
                       className={`h-1.5 rounded-full transition-all duration-300 ease-in-out ${
                         segment.status === 'error' ? 'bg-red-500' : 
-                        segment.status === 'completed' ? 'bg-green-500' : 'bg-blue-400'
+                        segment.status === 'completed' ? 'bg-green-500' : 
+                        segment.status === 'processing' ? 'bg-blue-400' :
+                        segment.status === 'uploading' ? 'bg-yellow-400' : 'bg-gray-300'
                       }`}
                       style={{ width: `${segment.progress}%` }}
                     ></div>
                   </div>
                 </div>
-                <div className="w-24 flex-shrink-0 text-xs ml-2 text-neutral-500">
-                  {segment.status === 'pending' && 'Pending'}
-                  {segment.status === 'uploading' && 'Uploading...'}
-                  {segment.status === 'processing' && 'Processing...'}
-                  {segment.status === 'completed' && 'Completed'}
+                <div className="w-28 flex-shrink-0 text-xs ml-2 text-neutral-500">
+                  {segment.status === 'pending' && 'Wachtend...'}
+                  {segment.status === 'uploading' && 'Uploaden...'}
+                  {segment.status === 'processing' && 'Verwerken...'}
+                  {segment.status === 'completed' && 'Voltooid'}
                   {segment.status === 'error' && (
-                    <span className="text-red-500">Error</span>
+                    <span className="text-red-500">Fout</span>
                   )}
+                  {segment.retries > 0 && ` (${segment.retries}/${MAX_RETRIES})`}
                 </div>
               </div>
             ))}

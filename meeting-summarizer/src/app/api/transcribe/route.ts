@@ -3,12 +3,19 @@ import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
-import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
+import { 
+  SIZE_LIMIT, 
+  splitAudioBlob, 
+  joinTranscriptions, 
+  processChunks, 
+  formatBytes 
+} from '@/lib/audioChunker';
+
 export const runtime = 'edge';
 export const maxDuration = 300; // 5 minutes max execution time
 
 // Configure timeout for fetch operations
-const FETCH_TIMEOUT = 240000; // 4 minutes
+const FETCH_TIMEOUT = 120000; // 2 minutes
 
 // Add a timeout wrapper for any promise
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
@@ -49,11 +56,11 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000):
   throw lastError;
 }
 
-// This is the most important fix - ensuring we export a POST handler function
+// Main route handler
 export async function POST(request: Request) {
   try {
     // Log the incoming request for debugging
-    console.log(`Received transcription request to ${request.url}`);
+    console.log(`Received transcription request`);
     
     const body = await request.json();
     
@@ -93,11 +100,11 @@ export async function POST(request: Request) {
       selectedModel.costPerMinute
     );
 
-    console.log(`Processing file: ${originalFileName}, Size: ${fileSizeMB.toFixed(2)}MB, Estimated duration: ${estimatedDurationMinutes.toFixed(2)} minutes`);
+    console.log(`Processing file: ${originalFileName}, Size: ${formatBytes(fileSize)}, Estimated duration: ${estimatedDurationMinutes.toFixed(2)} minutes`);
     
     try {
       // Fetch the audio blob from the URL
-      console.log(`Fetching audio from: ${blobUrl}`);
+      console.log(`Fetching audio from blob URL...`);
       const audioResponse = await withTimeout(
         fetch(blobUrl), 
         FETCH_TIMEOUT, 
@@ -108,119 +115,63 @@ export async function POST(request: Request) {
         throw new Error(`Error fetching audio file: ${audioResponse.status} ${audioResponse.statusText}`);
       }
       
-      const originalBlob = await audioResponse.blob();
-      console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
+      const audioBlob = await audioResponse.blob();
+      console.log(`Audio blob fetched. Size: ${formatBytes(audioBlob.size)}, Type: ${audioBlob.type}`);
 
-      // Process the MP3 file
-      const audioBlob = originalBlob;
-      console.log(`Processing audio. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
-
-      // Always split into chunks for better reliability
-      if (true) { // Force chunking for all files
-        console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
-        const audioChunks = await splitAudioBlob(audioBlob, 2 * 1024 * 1024); // Use 2MB chunks for better reliability
-        console.log(`Split complete. Created ${audioChunks.length} chunks.`);
+      // Always use chunking for better reliability
+      console.log(`Splitting audio into smaller chunks...`);
+      const audioChunks = await splitAudioBlob(audioBlob, SIZE_LIMIT / 5); // Use smaller chunks (2MB) for better reliability
+      console.log(`Split complete. Created ${audioChunks.length} chunks.`);
+      
+      // Function to process a single chunk
+      const processChunk = async (chunk: Blob, index: number): Promise<string> => {
+        console.log(`Processing chunk ${index + 1}/${audioChunks.length}, size: ${formatBytes(chunk.size)}`);
         
-        // Process chunks in parallel with a limit
-        const PARALLEL_LIMIT = 3; // Process 3 chunks at a time
-        const results: string[] = [];
-        
-        for (let i = 0; i < audioChunks.length; i += PARALLEL_LIMIT) {
-          const chunkGroup = audioChunks.slice(i, i + PARALLEL_LIMIT);
-          const groupPromises = chunkGroup.map(async (chunk, groupIndex) => {
-            const index = i + groupIndex;
-            console.log(`Processing chunk ${index + 1}/${audioChunks.length}, size: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
-            
-            try {
-              // Create a valid File object for OpenAI API
-              const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
-              const fileObject = new File([chunk], chunkFileName, { 
-                type: 'audio/mpeg', // Always MP3 after conversion
-                lastModified: Date.now()
-              });
-              
-              // Process with OpenAI Whisper with retries
-              const result = await withRetry(async () => {
-                return await openai.audio.transcriptions.create({
-                  file: fileObject,
-                  model: modelId,
-                  language: 'nl',
-                  response_format: 'text',
-                });
-              }, 3, 2000); // 3 retries, 2 second initial delay
-              
-              console.log(`Successfully transcribed chunk ${index + 1}/${audioChunks.length}`);
-              return result;
-            } catch (error: any) {
-              console.error(`Error processing chunk ${index + 1}/${audioChunks.length}:`, error);
-              
-              // Provide more detailed error information
-              const errorMessage = error.message || 'Unknown error';
-              const statusCode = error.status || 500;
-              throw new Error(`Failed to process chunk ${index + 1}/${audioChunks.length}: ${errorMessage} (${statusCode})`);
-            }
-          });
-
-          // Process group in parallel
-          const groupResults = await Promise.all(groupPromises);
-          results.push(...groupResults);
-          
-          // Add a longer delay between groups to avoid rate limits
-          if (i + PARALLEL_LIMIT < audioChunks.length) {
-            console.log('Waiting between chunk groups to avoid rate limits...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          }
-        }
-
-        // Combine all results
-        console.log(`Combining ${results.length} transcription chunks...`);
-        const transcription = joinTranscriptions(results);
-
-        console.log(`Chunked transcription complete. Length: ${transcription.length} characters`);
-        
-        return NextResponse.json({ 
-          transcription,
-          usage: {
-            model: selectedModel.name,
-            estimatedDurationMinutes,
-            estimatedCost,
-            chunked: true,
-            chunks: audioChunks.length
-          }
-        });
-      } else {
-        // No chunking needed, process the whole file
-        console.log(`File is under size limit. Processing as single file.`);
-        
-        // Create a File object for OpenAI API
-        const fileObject = new File([audioBlob], originalFileName, { 
+        // Create a valid File object for OpenAI API
+        const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
+        const fileObject = new File([chunk], chunkFileName, { 
           type: 'audio/mpeg', // Always MP3 after conversion
           lastModified: Date.now()
         });
         
         // Process with OpenAI Whisper
-        const transcription = await withRetry(async () => {
-          return await openai.audio.transcriptions.create({
-            file: fileObject,
-            model: modelId,
-            language: 'nl',
-            response_format: 'text',
-          });
-        }, 2, 2000);
-        
-        console.log(`Transcription complete. Length: ${transcription.length} characters`);
-        
-        return NextResponse.json({ 
-          transcription,
-          usage: {
-            model: selectedModel.name,
-            estimatedDurationMinutes,
-            estimatedCost,
-            chunked: false,
-            chunks: 1
-          }
+        const result = await openai.audio.transcriptions.create({
+          file: fileObject,
+          model: modelId,
+          language: 'nl',
+          response_format: 'text',
         });
-      }
+        
+        console.log(`Successfully transcribed chunk ${index + 1}/${audioChunks.length} (${result.length} characters)`);
+        return result;
+      };
+      
+      // Process all chunks with improved error handling
+      const transcription = await processChunks<string>(
+        audioChunks,
+        processChunk,
+        joinTranscriptions,
+        {
+          maxConcurrent: audioChunks.length > 10 ? 1 : 2, // Process only 1 at a time for very large files
+          retries: 3,
+          delayBetweenChunks: 1500, // Longer delay between chunks
+          timeoutPerChunk: 90 * 1000 // 90 second timeout per chunk
+        }
+      );
+
+      console.log(`Transcription complete. Total length: ${transcription.length} characters`);
+      
+      return NextResponse.json({ 
+        transcription,
+        usage: {
+          model: selectedModel.name,
+          estimatedDurationMinutes,
+          estimatedCost,
+          chunked: true,
+          chunks: audioChunks.length
+        }
+      });
+      
     } catch (processingError: any) {
       console.error('Error processing audio:', processingError);
       
@@ -230,24 +181,24 @@ export async function POST(request: Request) {
       if (processingError.message?.includes('FFmpeg')) {
         errorMessage = `Audio conversion failed: ${processingError.message}. Please ensure the file is a valid audio file.`;
       } else if (processingError.message?.includes('timeout') || processingError.message?.includes('Timeout')) {
-        errorMessage = processingError.message;
+        errorMessage = `Verwerking duurde te lang voor dit bestand (${formatBytes(fileSize)}). Probeer een kleinere of kortere opname, of splits het bestand handmatig.`;
         statusCode = 408; // Request Timeout
       } else if (processingError.message?.includes('chunk')) {
-        errorMessage = processingError.message;
+        errorMessage = `Error bij het verwerken van een segment van het bestand: ${processingError.message}. Probeer een kortere opname.`;
       } else if (processingError.status === 413 || processingError.message?.includes('too large')) {
-        errorMessage = 'Audio file is too large for the API. Please use a smaller file or compress it.';
+        errorMessage = `Bestand is te groot voor verwerking (${formatBytes(fileSize)}). Maximum is ongeveer 100MB. Verklein het bestand of verkort de opname.`;
         statusCode = 413;
       } else if (processingError.status === 429) {
-        errorMessage = 'API rate limit reached. Please try again later.';
+        errorMessage = 'API limiet bereikt. Probeer het over enkele minuten opnieuw.';
         statusCode = 429;
       } else if (processingError.status === 401) {
-        errorMessage = 'Authentication error. Check your OpenAI API key.';
+        errorMessage = 'Authenticatiefout. Neem contact op met de beheerder.';
         statusCode = 401;
       } else if (processingError.status === 504 || processingError.message?.includes('timeout')) {
-        errorMessage = 'Processing timed out. The file might be too long or the server is busy. Please try again.';
+        errorMessage = `Verwerking duurde te lang voor dit bestand. De opname is mogelijk te lang (${estimatedDurationMinutes.toFixed(0)} minuten geschat). Probeer een kortere opname.`;
         statusCode = 504;
       } else if (processingError.message) {
-        errorMessage = `Error: ${processingError.message}`;
+        errorMessage = `Fout: ${processingError.message}`;
       }
       
       return NextResponse.json(
