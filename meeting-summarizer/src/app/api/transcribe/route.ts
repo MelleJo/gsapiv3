@@ -111,14 +111,14 @@ export async function POST(request: Request) {
       const originalBlob = await audioResponse.blob();
       console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
 
-      // Use the blob directly since it's already MP3
+      // Process the MP3 file
       const audioBlob = originalBlob;
       console.log(`Processing audio. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
 
-      // Split into chunks if needed based on OpenAI's limit
-      if (audioBlob.size > SIZE_LIMIT) {
+      // Always split into chunks for better reliability
+      if (true) { // Force chunking for all files
         console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
-        const audioChunks = await splitAudioBlob(audioBlob);
+        const audioChunks = await splitAudioBlob(audioBlob, 5 * 1024 * 1024); // Use 5MB chunks
         console.log(`Split complete. Created ${audioChunks.length} chunks.`);
         
         // Process each chunk and combine results
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
                 lastModified: Date.now()
               });
               
-              // Process with OpenAI Whisper with proper error handling
+              // Process with OpenAI Whisper with increased retries and backoff
               const result = await withRetry(async () => {
                 return await openai.audio.transcriptions.create({
                   file: fileObject,
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
                   language: 'nl',
                   response_format: 'text',
                 });
-              }, 2, 2000);
+              }, 3, 5000); // 3 retries with 5 second initial delay
               
               console.log(`Successfully transcribed chunk ${index + 1}/${audioChunks.length}`);
               return result;

@@ -37,26 +37,53 @@ export async function convertToMp3(audioBlob: Blob, originalFormat: string): Pro
     // Write input file
     await ffmpegInstance.writeFile(inputFileName, new Uint8Array(inputData));
 
-    // Run FFmpeg command
+    // Run FFmpeg command with segmentation
     await ffmpegInstance.exec([
       '-i', inputFileName,
       '-vn', // No video
       '-acodec', 'libmp3lame',
-      '-ab', '192k', // High quality bitrate
-      '-ar', '44100', // Standard sample rate
-      '-y', // Overwrite output
-      outputFileName
+      '-ab', '64k', // Lower bitrate for speech
+      '-ar', '22050', // Lower sample rate for speech
+      '-ac', '1', // Mono
+      '-f', 'segment', // Enable segmentation
+      '-segment_time', '300', // 5 minutes per segment
+      '-reset_timestamps', '1',
+      outputFileName.replace('.mp3', '_%03d.mp3') // Output pattern for segments
     ]);
 
-    // Read the output file
-    const data = await ffmpegInstance.readFile(outputFileName);
+    // Read all segments and combine them
+    let combinedData = new Uint8Array(0);
+    let segmentIndex = 0;
     
-    // Clean up
-    await ffmpegInstance.deleteFile(inputFileName);
-    await ffmpegInstance.deleteFile(outputFileName);
+    while (true) {
+      try {
+        const segmentName = outputFileName.replace('.mp3', `_${String(segmentIndex).padStart(3, '0')}.mp3`);
+        const segmentData = await ffmpegInstance.readFile(segmentName);
+        
+        // Convert FileData to Uint8Array if it's a string
+        const segmentUint8 = segmentData instanceof Uint8Array ? 
+          segmentData : 
+          new TextEncoder().encode(segmentData as string);
+        
+        // Combine with existing data
+        const newData = new Uint8Array(combinedData.length + segmentUint8.length);
+        newData.set(combinedData);
+        newData.set(segmentUint8, combinedData.length);
+        combinedData = newData;
+        
+        // Clean up segment
+        await ffmpegInstance.deleteFile(segmentName);
+        segmentIndex++;
+      } catch {
+        break; // No more segments
+      }
+    }
 
-    // Create MP3 blob
-    return new Blob([data], { type: 'audio/mpeg' });
+    // Clean up input file
+    await ffmpegInstance.deleteFile(inputFileName);
+
+    // Create final MP3 blob
+    return new Blob([combinedData], { type: 'audio/mpeg' });
   } catch (error: any) {
     console.error('FFmpeg conversion error:', error);
     throw new Error(`Audio conversion failed: ${error.message}`);
