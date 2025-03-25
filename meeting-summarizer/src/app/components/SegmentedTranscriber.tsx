@@ -262,7 +262,7 @@ export default function SegmentedTranscriber({
   async function processAudioFile(file: File) {
     try {
       setIsProcessing(true);
-      console.log(`Processing audio file: ${file.name}, size: ${file.size / (1024 * 1024).toFixed(2)}MB`);
+      console.log(`Processing audio file: ${file.name}, size: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
       
       // Split the file into much smaller segments than before
       const audioBlobs = await splitAudioBlob(file, SEGMENT_SIZE);
