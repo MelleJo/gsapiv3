@@ -7,7 +7,7 @@ import { upload } from '@vercel/blob/client';
 import AudioConverter from './AudioConverter';
 
 // Toggle to enable or disable FFmpeg conversion
-const ENABLE_FFMPEG_CONVERSION = false; // Set to false to bypass FFmpeg completely
+const ENABLE_FFMPEG_CONVERSION = true; // Enable FFmpeg conversion for all audio files
 
 // Define motion button component with proper typing
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
@@ -265,33 +265,9 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
 
     setError('');
     
-    // If FFmpeg is disabled, upload directly
-    if (!ENABLE_FFMPEG_CONVERSION) {
-      handleUpload(selectedFile);
-      return;
-    }
-    
-    // Check if this is a format that needs conversion
-    const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
-    
-    // For larger files, we'll always try to convert to a more efficient format
-    const shouldConvert = 
-      // These formats definitely need conversion
-      ['m4a', 'mp4', 'aac', 'flac', 'ogg', 'webm'].includes(fileExt) ||
-      // For larger files, even MP3 should be optimized
-      (fileExt === 'mp3' && selectedFile.size > 10 * 1024 * 1024) ||
-      // For WAV, always convert as they're uncompressed
-      fileExt === 'wav';
-    
-    if (shouldConvert) {
-      // Set converting state
-      setIsConverting(true);
-      setConversionProgress(0);
-      // Conversion will trigger upload automatically when complete
-    } else {
-      // For small MP3 files, proceed directly to upload
-      handleUpload(selectedFile);
-    }
+    // Always convert to MP3 for consistency
+    setIsConverting(true);
+    setConversionProgress(0);
   };
 
   // Handle drag events

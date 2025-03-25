@@ -4,9 +4,7 @@ import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
-import { convertToMp3 } from '@/lib/audioConverter';
-
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const maxDuration = 300; // 5 minutes max execution time
 
 // Configure timeout for fetch operations
@@ -113,10 +111,9 @@ export async function POST(request: Request) {
       const originalBlob = await audioResponse.blob();
       console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
 
-      // Convert to MP3 format for consistent processing using FFmpeg WASM
-      console.log('Converting audio to MP3 format...');
-      const audioBlob = await convertToMp3(originalBlob, fileExt);
-      console.log(`Conversion complete. MP3 size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
+      // Use the blob directly - conversion should happen client-side
+      const audioBlob = originalBlob;
+      console.log(`Processing audio. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
 
       // Split audio into chunks if needed
       if (audioBlob.size > SIZE_LIMIT) {
