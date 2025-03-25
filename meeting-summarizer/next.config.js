@@ -43,8 +43,8 @@ const nextConfig = {
         ],
       },
       {
-        // Add cache control for FFmpeg files
-        source: '/ffmpeg/:path*',
+        // JavaScript files
+        source: '/ffmpeg/ffmpeg-core.js',
         headers: [
           {
             key: 'Cache-Control',
@@ -53,6 +53,20 @@ const nextConfig = {
           {
             key: 'Content-Type',
             value: 'application/javascript; charset=utf-8',
+          }
+        ],
+      },
+      {
+        // WebAssembly files
+        source: '/ffmpeg/ffmpeg-core.wasm',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+          {
+            key: 'Content-Type',
+            value: 'application/wasm',
           }
         ],
       }

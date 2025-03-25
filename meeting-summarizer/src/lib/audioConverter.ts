@@ -1,4 +1,4 @@
-import { FFmpeg, createFFmpeg } from '@ffmpeg/ffmpeg';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
 
 let ffmpeg: FFmpeg | null = null;
 
@@ -7,10 +7,11 @@ let ffmpeg: FFmpeg | null = null;
  */
 async function initFFmpeg() {
   if (!ffmpeg) {
-    ffmpeg = createFFmpeg({
-      log: true
+    ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: '/ffmpeg/ffmpeg-core.js',
+      wasmURL: '/ffmpeg/ffmpeg-core.wasm'
     });
-    await ffmpeg.load();
   }
   return ffmpeg;
 }
@@ -33,11 +34,11 @@ export async function convertToMp3(audioBlob: Blob, originalFormat: string): Pro
     const inputFileName = `input.${originalFormat}`;
     const outputFileName = 'output.mp3';
 
-    // Write input file to FFmpeg's virtual filesystem
-    await ffmpegInstance.FS('writeFile', inputFileName, new Uint8Array(inputData));
+    // Write input file
+    await ffmpegInstance.writeFile(inputFileName, new Uint8Array(inputData));
 
     // Run FFmpeg command
-    await ffmpegInstance.run(
+    await ffmpegInstance.exec([
       '-i', inputFileName,
       '-vn', // No video
       '-acodec', 'libmp3lame',
@@ -45,14 +46,14 @@ export async function convertToMp3(audioBlob: Blob, originalFormat: string): Pro
       '-ar', '44100', // Standard sample rate
       '-y', // Overwrite output
       outputFileName
-    );
+    ]);
 
     // Read the output file
-    const data = ffmpegInstance.FS('readFile', outputFileName);
+    const data = await ffmpegInstance.readFile(outputFileName);
     
     // Clean up
-    ffmpegInstance.FS('unlink', inputFileName);
-    ffmpegInstance.FS('unlink', outputFileName);
+    await ffmpegInstance.deleteFile(inputFileName);
+    await ffmpegInstance.deleteFile(outputFileName);
 
     // Create MP3 blob
     return new Blob([data], { type: 'audio/mpeg' });
