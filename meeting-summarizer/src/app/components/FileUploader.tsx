@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useState, forwardRef, HTMLAttributes } from 'react';
+import React, { useRef, useState, forwardRef, HTMLAttributes, useEffect } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { motion, MotionProps } from 'framer-motion';
 import { upload } from '@vercel/blob/client';
 import AudioConverter from './AudioConverter';
+import { formatBytes } from '@/lib/audioChunker';
 
 // Toggle to enable or disable FFmpeg conversion
 const ENABLE_FFMPEG_CONVERSION = true; // Enable FFmpeg conversion for all audio files
@@ -44,6 +45,11 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [conversionProgress, setConversionProgress] = useState<number>(0);
+  const [fileInfo, setFileInfo] = useState<{
+    size: string;
+    duration: string;
+    format: string;
+  } | null>(null);
   
   // Define the threshold for server vs client uploads - use a smaller size to improve performance
   const SERVER_UPLOAD_LIMIT = 2 * 1024 * 1024; // 2MB (reduced from 4MB to avoid timeout issues)
@@ -55,6 +61,39 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       setFileName(file.name);
       setSelectedFile(file);
       setError('');
+      
+      // Display file information
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+      const fileSizeStr = formatBytes(file.size);
+      
+      // Estimate duration roughly based on file size and format
+      let estimatedDuration = "Onbekend";
+      
+      // Very rough estimate: 1MB ≈ 1 minute for compressed audio
+      if (file.size) {
+        const durationMinutes = Math.round(file.size / (1024 * 1024));
+        
+        if (durationMinutes < 60) {
+          estimatedDuration = `~${durationMinutes} ${durationMinutes === 1 ? 'minuut' : 'minuten'}`;
+        } else {
+          const hours = Math.floor(durationMinutes / 60);
+          const mins = durationMinutes % 60;
+          estimatedDuration = `~${hours} ${hours === 1 ? 'uur' : 'uren'}${mins > 0 ? ` ${mins} ${mins === 1 ? 'minuut' : 'minuten'}` : ''}`;
+        }
+      }
+      
+      setFileInfo({
+        size: fileSizeStr,
+        duration: estimatedDuration,
+        format: fileExt.toUpperCase()
+      });
+      
+      // Display warning for large files
+      if (file.size > 100 * 1024 * 1024) {
+        setError('Let op: dit bestand is erg groot. De verwerking kan enige tijd duren en mogelijk niet slagen. Overweeg een kleiner bestand te gebruiken.');
+      } else if (file.size > 50 * 1024 * 1024) {
+        setError('Let op: dit is een groot bestand. De verwerking kan enkele minuten duren.');
+      }
     }
   };
 
@@ -103,7 +142,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     // Check file size (reduced from 500MB to 200MB limit for better Vercel performance)
     const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB in bytes
     if (fileToUpload.size > MAX_FILE_SIZE) {
-      setError(`Bestand te groot (${(fileToUpload.size / (1024 * 1024)).toFixed(2)}MB). Maximale bestandsgrootte is 200MB.`);
+      setError(`Bestand te groot (${formatBytes(fileToUpload.size)}). Maximale bestandsgrootte is 200MB.`);
       return;
     }
 
@@ -204,6 +243,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       setFileName('');
       setSelectedFile(null);
       setIsClientUpload(false);
+      setFileInfo(null);
       if (inputFileRef.current) {
         inputFileRef.current.value = '';
       }
@@ -231,9 +271,22 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
 
   // Handle conversion complete
   const handleConversionComplete = (convertedFile: File) => {
-    console.log(`Conversion complete: ${convertedFile.name} (${convertedFile.size} bytes)`);
+    console.log(`Conversion complete: ${convertedFile.name} (${formatBytes(convertedFile.size)})`);
     setIsConverting(false);
     setFileName(convertedFile.name);
+    
+    // Update file info after conversion
+    setFileInfo(prev => {
+      if (prev) {
+        return {
+          ...prev,
+          format: 'MP3', // Always MP3 after conversion
+          size: formatBytes(convertedFile.size)
+        };
+      }
+      return prev;
+    });
+    
     // Automatically start upload after conversion
     handleUpload(convertedFile);
   };
@@ -265,9 +318,24 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
 
     setError('');
     
-    // Always convert to MP3 for consistency
-    setIsConverting(true);
-    setConversionProgress(0);
+    // Get file extension
+    const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+    
+    // Check if we should convert this file
+    const needsConversion = 
+      ENABLE_FFMPEG_CONVERSION && 
+      // Always convert non-MP3 files
+      (fileExt !== 'mp3' || 
+       // Also convert large MP3 files for optimization
+       (fileExt === 'mp3' && selectedFile.size > 20 * 1024 * 1024));
+    
+    if (needsConversion) {
+      setIsConverting(true);
+      setConversionProgress(0);
+    } else {
+      // If no conversion needed, upload directly
+      handleUpload(selectedFile);
+    }
   };
 
   // Handle drag events
@@ -335,6 +403,36 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           setFileName(file.name);
           setSelectedFile(file);
           setError('');
+          
+          // Display file information
+          const fileSizeStr = formatBytes(file.size);
+          let estimatedDuration = "Onbekend";
+          
+          // Estimate duration based on file size (rough estimate: 1MB ≈ 1 minute for compressed audio)
+          if (file.size) {
+            const durationMinutes = Math.round(file.size / (1024 * 1024));
+            
+            if (durationMinutes < 60) {
+              estimatedDuration = `~${durationMinutes} ${durationMinutes === 1 ? 'minuut' : 'minuten'}`;
+            } else {
+              const hours = Math.floor(durationMinutes / 60);
+              const mins = durationMinutes % 60;
+              estimatedDuration = `~${hours} ${hours === 1 ? 'uur' : 'uren'}${mins > 0 ? ` ${mins} ${mins === 1 ? 'minuut' : 'minuten'}` : ''}`;
+            }
+          }
+          
+          setFileInfo({
+            size: fileSizeStr,
+            duration: estimatedDuration,
+            format: fileExt.toUpperCase()
+          });
+          
+          // Display warning for large files
+          if (file.size > 100 * 1024 * 1024) {
+            setError('Let op: dit bestand is erg groot. De verwerking kan enige tijd duren en mogelijk niet slagen. Overweeg een kleiner bestand te gebruiken.');
+          } else if (file.size > 50 * 1024 * 1024) {
+            setError('Let op: dit is een groot bestand. De verwerking kan enkele minuten duren.');
+          }
         }
       } else {
         setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
@@ -384,23 +482,31 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
             Ondersteunde bestanden: MP3, WAV, FLAC, OGG, M4A, MP4, etc.
           </p>
           
-          {fileName && (
-            <div className="mt-3 p-2 bg-blue-50 rounded-lg text-sm text-blue-700 flex items-center">
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-4 w-4 mr-2" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" x2="12" y1="19" y2="22"></line>
-              </svg>
-              {fileName}
+          {/* Display file information if a file is selected */}
+          {fileInfo && (
+            <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700 flex flex-col">
+              <div className="flex items-center mb-1">
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  className="h-4 w-4 mr-2" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" x2="12" y1="19" y2="22"></line>
+                </svg>
+                <span className="font-medium">{fileName}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs pl-6">
+                <div><span className="text-blue-500">Formaat:</span> {fileInfo.format}</div>
+                <div><span className="text-blue-500">Grootte:</span> {fileInfo.size}</div>
+                <div><span className="text-blue-500">Duur:</span> {fileInfo.duration}</div>
+              </div>
             </div>
           )}
           
