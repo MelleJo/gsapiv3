@@ -9,7 +9,10 @@
 export const SIZE_LIMIT = 25 * 1024 * 1024;
 
 // Default chunk size for binary chunking (slightly under the limit)
-export const DEFAULT_CHUNK_SIZE = 24 * 1024 * 1024;
+export const DEFAULT_CHUNK_SIZE = 20 * 1024 * 1024;
+
+// Segment size for multi-step processing (how we split files for separate API calls)
+export const SEGMENT_SIZE = 20 * 1024 * 1024;
 
 // Maximum duration for processing a single chunk (in seconds)
 export const CHUNK_TIMEOUT = 240; // 4 minutes, leaving 1 minute buffer for the 5-minute limit

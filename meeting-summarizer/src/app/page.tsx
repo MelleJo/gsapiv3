@@ -12,6 +12,7 @@ import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
 import Notification, { NotificationType } from '@/app/components/Notification';
 import ProcessingPipeline from './components/ProcessingPipeline';
+import SegmentedTranscriber from './components/SegmentedTranscriber';
 import PromptSelector from '@/app/components/PromptSelector';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
