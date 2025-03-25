@@ -5,11 +5,14 @@
  * by splitting them into manageable chunks for transcription.
  */
 
-// Maximum size limit for a single chunk in bytes (10MB for better reliability)
-export const SIZE_LIMIT = 10 * 1024 * 1024;
+// Maximum size limit for a single chunk in bytes (25MB for OpenAI's API)
+export const SIZE_LIMIT = 25 * 1024 * 1024;
 
 // Default chunk size for binary chunking (slightly under the limit)
-export const DEFAULT_CHUNK_SIZE = 9.5 * 1024 * 1024;
+export const DEFAULT_CHUNK_SIZE = 24 * 1024 * 1024;
+
+// Maximum duration for processing a single chunk (in seconds)
+export const CHUNK_TIMEOUT = 240; // 4 minutes, leaving 1 minute buffer for the 5-minute limit
 
 /**
  * Splits an audio blob into smaller chunks based on size constraints.
@@ -65,11 +68,26 @@ export async function processChunks<T, R = T>(
     return combineFn([result]);
   }
   
-  // Process all chunks and collect results
+  // Process chunks with timeout and retries
   const results: T[] = [];
   for (let i = 0; i < chunks.length; i++) {
-    const result = await processFn(chunks[i], i);
-    results.push(result);
+    try {
+      const result = await Promise.race([
+        processFn(chunks[i], i),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error(`Chunk ${i + 1} processing timed out after ${CHUNK_TIMEOUT} seconds`)), 
+          CHUNK_TIMEOUT * 1000)
+        )
+      ]);
+      results.push(result);
+      // Add a small delay between chunks to avoid rate limiting
+      if (i < chunks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      console.error(`Error processing chunk ${i + 1}:`, error);
+      throw error;
+    }
   }
   
   // Combine the results

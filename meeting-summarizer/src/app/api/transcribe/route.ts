@@ -5,13 +5,10 @@ import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
 export const runtime = 'edge';
-export const maxDuration = 600; // 10 minutes max execution time
-
-// Split large files into smaller chunks (10MB)
-const CHUNK_SIZE = 10 * 1024 * 1024;
+export const maxDuration = 300; // 5 minutes max execution time
 
 // Configure timeout for fetch operations
-const FETCH_TIMEOUT = 120000; // 2 minutes
+const FETCH_TIMEOUT = 240000; // 4 minutes
 
 // Add a timeout wrapper for any promise
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
@@ -114,17 +111,12 @@ export async function POST(request: Request) {
       const originalBlob = await audioResponse.blob();
       console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
 
-      // Always split into smaller chunks for better reliability
+      // Use the blob directly since it's already MP3
       const audioBlob = originalBlob;
       console.log(`Processing audio. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
 
-      // Force chunking for files over 10MB
-      if (audioBlob.size > CHUNK_SIZE) {
-        console.log(`Large file detected, forcing chunking with ${CHUNK_SIZE / (1024 * 1024)}MB chunks`);
-      }
-
-      // Always split into chunks for better reliability with large files
-      if (audioBlob.size > CHUNK_SIZE) {
+      // Split into chunks if needed based on OpenAI's limit
+      if (audioBlob.size > SIZE_LIMIT) {
         console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
         const audioChunks = await splitAudioBlob(audioBlob);
         console.log(`Split complete. Created ${audioChunks.length} chunks.`);
@@ -238,6 +230,9 @@ export async function POST(request: Request) {
       } else if (processingError.status === 401) {
         errorMessage = 'Authentication error. Check your OpenAI API key.';
         statusCode = 401;
+      } else if (processingError.status === 504 || processingError.message?.includes('timeout')) {
+        errorMessage = 'Processing timed out. The file might be too long or the server is busy. Please try again.';
+        statusCode = 504;
       } else if (processingError.message) {
         errorMessage = `Error: ${processingError.message}`;
       }

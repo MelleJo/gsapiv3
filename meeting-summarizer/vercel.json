@@ -1,11 +1,5 @@
 {
   "functions": {
-    "src/app/api/upload-blob/route.ts": {
-      "maxDuration": 300
-    },
-    "src/app/api/client-upload/route.ts": {
-      "maxDuration": 300
-    },
     "src/app/api/transcribe/route.ts": {
       "maxDuration": 300
     }
@@ -15,8 +9,8 @@
       "source": "/api/(.*)",
       "headers": [
         {
-          "key": "x-middleware-cache",
-          "value": "no-cache"
+          "key": "Cache-Control",
+          "value": "no-store, no-cache"
         }
       ]
     }
