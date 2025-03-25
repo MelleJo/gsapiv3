@@ -118,13 +118,17 @@ export async function POST(request: Request) {
       // Always split into chunks for better reliability
       if (true) { // Force chunking for all files
         console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
-        const audioChunks = await splitAudioBlob(audioBlob, 5 * 1024 * 1024); // Use 5MB chunks
+        const audioChunks = await splitAudioBlob(audioBlob, 2 * 1024 * 1024); // Use 2MB chunks for better reliability
         console.log(`Split complete. Created ${audioChunks.length} chunks.`);
         
-        // Process each chunk and combine results
-        const transcription = await processChunks<string>(
-          audioChunks,
-          async (chunk: Blob, index: number) => {
+        // Process chunks in parallel with a limit
+        const PARALLEL_LIMIT = 3; // Process 3 chunks at a time
+        const results: string[] = [];
+        
+        for (let i = 0; i < audioChunks.length; i += PARALLEL_LIMIT) {
+          const chunkGroup = audioChunks.slice(i, i + PARALLEL_LIMIT);
+          const groupPromises = chunkGroup.map(async (chunk, groupIndex) => {
+            const index = i + groupIndex;
             console.log(`Processing chunk ${index + 1}/${audioChunks.length}, size: ${(chunk.size / (1024 * 1024)).toFixed(2)}MB`);
             
             try {
@@ -135,7 +139,7 @@ export async function POST(request: Request) {
                 lastModified: Date.now()
               });
               
-              // Process with OpenAI Whisper with increased retries and backoff
+              // Process with OpenAI Whisper with retries
               const result = await withRetry(async () => {
                 return await openai.audio.transcriptions.create({
                   file: fileObject,
@@ -143,7 +147,7 @@ export async function POST(request: Request) {
                   language: 'nl',
                   response_format: 'text',
                 });
-              }, 3, 5000); // 3 retries with 5 second initial delay
+              }, 3, 2000); // 3 retries, 2 second initial delay
               
               console.log(`Successfully transcribed chunk ${index + 1}/${audioChunks.length}`);
               return result;
@@ -155,13 +159,22 @@ export async function POST(request: Request) {
               const statusCode = error.status || 500;
               throw new Error(`Failed to process chunk ${index + 1}/${audioChunks.length}: ${errorMessage} (${statusCode})`);
             }
-          },
-          // Combine function
-          (results: string[]) => {
-            console.log(`Combining ${results.length} transcription chunks...`);
-            return joinTranscriptions(results);
+          });
+
+          // Process group in parallel
+          const groupResults = await Promise.all(groupPromises);
+          results.push(...groupResults);
+          
+          // Add a longer delay between groups to avoid rate limits
+          if (i + PARALLEL_LIMIT < audioChunks.length) {
+            console.log('Waiting between chunk groups to avoid rate limits...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
-        );
+        }
+
+        // Combine all results
+        console.log(`Combining ${results.length} transcription chunks...`);
+        const transcription = joinTranscriptions(results);
 
         console.log(`Chunked transcription complete. Length: ${transcription.length} characters`);
         
