@@ -4,6 +4,8 @@ import openai from '@/lib/openai';
 import { whisperModels } from '@/lib/config';
 import { estimateAudioDuration, calculateTranscriptionCost } from '@/lib/tokenCounter';
 import { SIZE_LIMIT, splitAudioBlob, joinTranscriptions, processChunks } from '@/lib/audioChunker';
+import { convertToMp3 } from '@/lib/audioConverter';
+import { checkFFmpegInstallation } from '@/lib/checkFFmpeg';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes max execution time
@@ -83,12 +85,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine if we need to use an alternative approach for certain file types
-    const isComplexFormat = fileExt === 'm4a' || fileExt === 'mp4';
-    
-    // File size and chunking notification
+    // File size notification
     const fileSizeMB = fileSize / (1024 * 1024);
-    const needsChunking = fileSize > SIZE_LIMIT;
     
     // Estimate duration and cost
     const estimatedDurationMinutes = estimateAudioDuration(fileSize);
@@ -101,7 +99,7 @@ export async function POST(request: Request) {
     console.log(`Processing file: ${originalFileName}, Size: ${fileSizeMB.toFixed(2)}MB, Estimated duration: ${estimatedDurationMinutes.toFixed(2)} minutes`);
     
     try {
-      // First, fetch the audio blob from the URL
+      // Fetch the audio blob from the URL
       console.log(`Fetching audio from: ${blobUrl}`);
       const audioResponse = await withTimeout(
         fetch(blobUrl), 
@@ -113,24 +111,24 @@ export async function POST(request: Request) {
         throw new Error(`Error fetching audio file: ${audioResponse.status} ${audioResponse.statusText}`);
       }
       
-      const audioBlob = await audioResponse.blob();
-      
-      // Determine appropriate MIME type
-      const mimeType = fileType || audioBlob.type || `audio/${fileExt}`;
-      
-      console.log(`Audio blob fetched. Size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${mimeType}`);
-      
-      // For M4A or other complex formats that exceed the size limit,
-      // we'll send the whole file directly to OpenAI and handle the error
-      // if it's too large, rather than trying to chunk it incorrectly
-      if (isComplexFormat && needsChunking) {
-        console.log(`Complex format (${fileExt}) detected that requires chunking. Using special handling.`);
-        return await handleComplexFormatFile(audioBlob, mimeType, originalFileName, modelId, selectedModel, estimatedDurationMinutes, estimatedCost);
+      const originalBlob = await audioResponse.blob();
+      console.log(`Audio blob fetched. Size: ${(originalBlob.size / (1024 * 1024)).toFixed(2)}MB, Type: ${fileType}`);
+
+      // Check FFmpeg installation before conversion
+      try {
+        await checkFFmpegInstallation();
+      } catch (error: any) {
+        console.error('FFmpeg check failed:', error);
+        throw new Error(`Audio conversion failed: ${error.message || 'FFmpeg is not properly configured'}`);
       }
-      
-      // Regular approach for other formats or smaller files
+
+      // Convert to MP3 format for consistent processing
+      console.log('Converting audio to MP3 format...');
+      const audioBlob = await convertToMp3(originalBlob, fileExt);
+      console.log(`Conversion complete. MP3 size: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
+
       // Split audio into chunks if needed
-      if (needsChunking) {
+      if (audioBlob.size > SIZE_LIMIT) {
         console.log(`Splitting audio into chunks with size limit of ${SIZE_LIMIT / (1024 * 1024)}MB...`);
         const audioChunks = await splitAudioBlob(audioBlob);
         console.log(`Split complete. Created ${audioChunks.length} chunks.`);
@@ -145,7 +143,7 @@ export async function POST(request: Request) {
               // Create a valid File object for OpenAI API
               const chunkFileName = `chunk_${index + 1}_${originalFileName}`;
               const fileObject = new File([chunk], chunkFileName, { 
-                type: mimeType,
+                type: 'audio/mpeg', // Always MP3 after conversion
                 lastModified: Date.now()
               });
               
@@ -195,7 +193,7 @@ export async function POST(request: Request) {
         
         // Create a File object for OpenAI API
         const fileObject = new File([audioBlob], originalFileName, { 
-          type: mimeType,
+          type: 'audio/mpeg', // Always MP3 after conversion
           lastModified: Date.now()
         });
         
@@ -228,12 +226,12 @@ export async function POST(request: Request) {
       let errorMessage = 'Processing error';
       let statusCode = 500;
       
-      // Improved error handling with specific error messages
-      if (processingError.message?.includes('timeout') || processingError.message?.includes('Timeout')) {
+      if (processingError.message?.includes('FFmpeg')) {
+        errorMessage = `Audio conversion failed: ${processingError.message}. Please ensure the file is a valid audio file.`;
+      } else if (processingError.message?.includes('timeout') || processingError.message?.includes('Timeout')) {
         errorMessage = processingError.message;
         statusCode = 408; // Request Timeout
       } else if (processingError.message?.includes('chunk')) {
-        // This is from our chunk processing error
         errorMessage = processingError.message;
       } else if (processingError.status === 413 || processingError.message?.includes('too large')) {
         errorMessage = 'Audio file is too large for the API. Please use a smaller file or compress it.';
@@ -262,137 +260,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: errorMessage },
       { status: statusCode }
-    );
-  }
-}
-
-// Helper function to handle complex format files (like M4A)
-async function handleComplexFormatFile(
-  audioBlob: Blob,
-  mimeType: string,
-  originalFileName: string,
-  modelId: string,
-  selectedModel: any,
-  estimatedDurationMinutes: number,
-  estimatedCost: number
-) {
-  console.log(`Using time-based chunking for complex format.`);
-  
-  try {
-    // For complex formats, we'll slice the file in segments and try to transcribe directly
-    // This is a best-effort approach since we can't properly split M4A files without decoding
-    
-    // First, try the whole file - it might work if it's not too large
-    try {
-      console.log(`Attempting to transcribe entire file first...`);
-      
-      const fileObject = new File([audioBlob], originalFileName, { 
-        type: mimeType,
-        lastModified: Date.now()
-      });
-      
-      const transcription = await openai.audio.transcriptions.create({
-        file: fileObject,
-        model: modelId,
-        language: 'nl',
-        response_format: 'text',
-      });
-      
-      console.log(`Full file transcription successful!`);
-      
-      return NextResponse.json({ 
-        transcription,
-        usage: {
-          model: selectedModel.name,
-          estimatedDurationMinutes,
-          estimatedCost,
-          chunked: false,
-          chunks: 1
-        }
-      });
-    } catch (fullFileError: any) {
-      // If the file is too large, we'll log the error and try our alternative approach
-      console.log(`Full file approach failed:`, fullFileError.message);
-      
-      if (fullFileError.status !== 413 && !fullFileError.message.includes('too large')) {
-        // If it's not a size issue, rethrow the error
-        throw fullFileError;
-      }
-    }
-    
-    // Create binary chunks - this is not ideal for M4A but might work 
-    // for some parts of the file
-    console.log(`Falling back to binary chunking for complex format.`);
-    const chunks: Blob[] = [];
-    const chunkSize = 25 * 1024 * 1024; // 25MB max for OpenAI
-    
-    for (let start = 0; start < audioBlob.size; start += chunkSize) {
-      const end = Math.min(start + chunkSize, audioBlob.size);
-      const chunk = audioBlob.slice(start, end, mimeType);
-      chunks.push(chunk);
-    }
-    
-    console.log(`Created ${chunks.length} binary chunks`);
-    
-    // Try to transcribe each chunk
-    let combinedTranscription = '';
-    let successfulChunks = 0;
-    
-    for (let i = 0; i < chunks.length; i++) {
-      try {
-        console.log(`Processing binary chunk ${i+1}/${chunks.length}`);
-        
-        const chunkFile = new File([chunks[i]], `chunk_${i+1}_${originalFileName}`, {
-          type: mimeType,
-          lastModified: Date.now()
-        });
-        
-        const chunkTranscription = await openai.audio.transcriptions.create({
-          file: chunkFile,
-          model: modelId,
-          language: 'nl',
-          response_format: 'text',
-        });
-        
-        if (chunkTranscription.trim()) {
-          if (combinedTranscription) combinedTranscription += '\n\n';
-          combinedTranscription += chunkTranscription;
-          successfulChunks++;
-        }
-      } catch (chunkError: any) {
-        console.error(`Error processing binary chunk ${i+1}:`, chunkError.message);
-        // Continue with next chunk even if this one fails
-      }
-    }
-    
-    if (!combinedTranscription) {
-      throw new Error(`Failed to transcribe any part of the ${originalFileName} file. The file format may not be supported for chunking.`);
-    }
-    
-    console.log(`Successfully transcribed ${successfulChunks} out of ${chunks.length} chunks.`);
-    
-    return NextResponse.json({ 
-      transcription: combinedTranscription,
-      usage: {
-        model: selectedModel.name,
-        estimatedDurationMinutes,
-        estimatedCost,
-        chunked: true,
-        chunks: chunks.length,
-        successfulChunks
-      }
-    });
-  } catch (error: any) {
-    console.error(`Complex format handling failed:`, error);
-    
-    // Try one more approach: split the file into equal parts without considering format
-    // This is a last resort and might not work well, but it's worth trying
-    return NextResponse.json(
-      { 
-        error: `Could not process the M4A/MP4 file. Error: ${error.message || 'Unknown error'}. 
-               Try converting your file to MP3 format for better results.` 
-      },
-      { status: 500 }
     );
   }
 }

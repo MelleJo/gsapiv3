@@ -59,217 +59,176 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         // It's a table, format it specially for email
         result.push(formatTableForEmail(paragraph));
       } else {
-        // Not a table, wrap in a paragraph
-        result.push(`<p style="margin: 0 0 16px 0; color: #111827;">${paragraph}</p>`);
+        // Not a table, keep as is
+        result.push(paragraph);
       }
     }
     
     return result.join('\n\n');
   };
 
-  // Check if a section of text contains a table
+  // Check if a section of text is likely a table
   const isTableSection = (text: string): boolean => {
-    const lines = text.split('\n').map(line => line.trim());
-    if (lines.length < 2) return false;
-
-    // Look for section headers and table structure
-    let hasTableHeader = false;
-    let hasTableContent = false;
-
+    const lines = text.split('\n');
+    let pipeLineCount = 0;
+    
     for (const line of lines) {
-      if (line.endsWith("Risico's:")) {
-        hasTableHeader = true;
-      }
-      if (line.includes('|') || line.match(/^[-]+$/)) {
-        hasTableContent = true;
+      if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
+        pipeLineCount++;
       }
     }
-
-    return hasTableHeader || hasTableContent;
+    
+    return pipeLineCount >= 2;
   };
 
-  interface TableCell {
-    content: string;
-    align?: 'left' | 'center' | 'right';
-  }
-
-  interface TableRow {
-    cells: TableCell[];
-  }
-
-  interface TableSection {
-    title?: string;
-    subtitle?: string;
-    headers: TableCell[];
-    rows: TableRow[];
-  }
-
-  // Parse markdown table alignment from separator row
-  const parseColumnAlignment = (separator: string): ('left' | 'center' | 'right')[] => {
-    return separator
-      .split('|')
-      .filter(Boolean)
-      .map(cell => {
-        cell = cell.trim();
-        if (cell.startsWith(':') && cell.endsWith(':')) return 'center' as const;
-        if (cell.endsWith(':')) return 'right' as const;
-        return 'left' as const;
-      });
-  };
-
-  // Parse a row of the markdown table
-  const parseTableRow = (line: string): TableCell[] => {
-    return line
-      .split('|')
-      .filter(Boolean)
-      .map(cell => ({
-        content: cell.trim(),
-        align: 'left' as const
-      }));
-  };
-
-  // Format a table for email with HTML
+  // Format a table specifically for email copying
   const formatTableForEmail = (tableText: string): string => {
     try {
       const tables = parseTable(tableText);
-      let formattedHtml = '';
+      let formattedText = '';
       
       tables.forEach((table) => {
-        formattedHtml += `
-          <div style="margin-bottom: 24px;">
-            ${table.title ? `
-              <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 8px 0;">
-                ${table.title}
-              </h3>
-            ` : ''}
-            ${table.subtitle ? `
-              <p style="font-size: 14px; color: #4B5563; margin: 0 0 16px 0;">
-                ${table.subtitle}
-              </p>
-            ` : ''}
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #D1D5DB; font-size: 14px; margin: 0;">
-              <thead>
-                <tr style="background-color: #F3F4F6;">
-                  <th style="width: 15%; padding: 8px; border: 1px solid #D1D5DB; text-align: left; font-weight: 600;">Risico</th>
-                  <th style="width: 10%; padding: 8px; border: 1px solid #D1D5DB; text-align: center; font-weight: 600;">Besproken</th>
-                  <th style="width: 35%; padding: 8px; border: 1px solid #D1D5DB; text-align: left; font-weight: 600;">Bespreking Details</th>
-                  <th style="width: 25%; padding: 8px; border: 1px solid #D1D5DB; text-align: left; font-weight: 600;">Actie</th>
-                  <th style="width: 15%; padding: 8px; border: 1px solid #D1D5DB; text-align: left; font-weight: 600;">Actie voor</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${table.rows.map(row => `
-                  <tr style="background-color: #FFFFFF;">
-                    <td style="padding: 8px; border: 1px solid #D1D5DB; text-align: left; vertical-align: top;">${row.cells[0]?.content || ''}</td>
-                    <td style="padding: 8px; border: 1px solid #D1D5DB; text-align: center;">${row.cells[1]?.content || ''}</td>
-                    <td style="padding: 8px; border: 1px solid #D1D5DB; text-align: left; vertical-align: top;">${row.cells[2]?.content || ''}</td>
-                    <td style="padding: 8px; border: 1px solid #D1D5DB; text-align: left; vertical-align: top;">${row.cells[3]?.content || ''}</td>
-                    <td style="padding: 8px; border: 1px solid #D1D5DB; text-align: left;">${row.cells[4]?.content || ''}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        `;
+        // Add section header and subtitle
+        formattedText += `${table.title}\n`;
+        formattedText += '='.repeat(table.title.length) + '\n';
+        if (table.subtitle) {
+          formattedText += `${table.subtitle}\n`;
+          formattedText += '-'.repeat(table.subtitle.length) + '\n';
+        }
+        formattedText += '\n';
+        
+        // Calculate column widths
+        const columnWidths = {
+          risk: 20,
+          discussed: 10,
+          details: 40,
+          action: 30,
+          actionFor: 20
+        };
+        
+        // Add headers
+        formattedText += [
+          table.headers[0].padEnd(columnWidths.risk),
+          table.headers[1].padEnd(columnWidths.discussed),
+          table.headers[2].padEnd(columnWidths.details),
+          table.headers[3].padEnd(columnWidths.action),
+          table.headers[4].padEnd(columnWidths.actionFor)
+        ].join(' | ') + '\n';
+        
+        // Add separator
+        formattedText += [
+          '-'.repeat(columnWidths.risk),
+          '-'.repeat(columnWidths.discussed),
+          '-'.repeat(columnWidths.details),
+          '-'.repeat(columnWidths.action),
+          '-'.repeat(columnWidths.actionFor)
+        ].join('-+-') + '\n';
+        
+        // Add rows
+        table.rows.forEach((row: TableRow) => {
+          const formattedRow = [
+            row.risk.padEnd(columnWidths.risk),
+            row.discussed.padEnd(columnWidths.discussed),
+            row.details.padEnd(columnWidths.details),
+            row.action.padEnd(columnWidths.action),
+            row.actionFor.padEnd(columnWidths.actionFor)
+          ].join(' | ');
+          
+          formattedText += formattedRow + '\n';
+        });
+        
+        formattedText += '\n\n';
       });
       
-      return formattedHtml;
+      return formattedText;
     } catch (e) {
       console.error("Error formatting table for email:", e);
       return tableText;
     }
   };
 
-  // Parse table into structured format
+  interface TableRow {
+    risk: string;
+    discussed: string;
+    details: string;
+    action: string;
+    actionFor: string;
+  }
+
+  interface TableSection {
+    type: 'zakelijk' | 'prive';
+    title: string;
+    subtitle?: string;
+    headers: string[];
+    rows: TableRow[];
+  }
+
   const parseTable = (tableText: string): TableSection[] => {
     const sections: TableSection[] = [];
-    const lines = tableText.split('\n');
-    let title: string | undefined;
-    let currentTable: TableSection | null = null;
+    let currentSection: TableSection | null = null;
+    
+    const lines = tableText.split('\n').map(line => line.trim()).filter(Boolean);
     
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+      const line = lines[i];
       
-      // Check for section title
+      // Check for section headers
       if (line.endsWith("Risico's:")) {
-        if (currentTable) {
-          sections.push(currentTable);
+        // If we have a current section, save it
+        if (currentSection?.rows.length) {
+          sections.push(currentSection);
         }
-        title = line;
-        currentTable = {
-          title,
-          headers: [
-            { content: 'Risico', align: 'left' as const },
-            { content: 'Besproken', align: 'center' as const },
-            { content: 'Bespreking Details', align: 'left' as const },
-            { content: 'Actie', align: 'left' as const },
-            { content: 'Actie voor', align: 'left' as const }
-          ],
+        
+        currentSection = {
+          type: line.toLowerCase().includes('zakelijke') ? 'zakelijk' : 'prive',
+          title: line,
+          headers: ['Risico', 'Besproken', 'Bespreking Details', 'Actie', 'Actie voor'],
           rows: []
         };
+        
+        // Check for subtitle in next line
+        if (i + 1 < lines.length && lines[i + 1].startsWith('Tabel per')) {
+          currentSection.subtitle = lines[i + 1];
+          i++; // Skip subtitle line
+        }
         continue;
       }
       
-      // Skip separator lines
-      if (line.match(/^[-]+$/)) continue;
-      
       // Process table rows
-      if (currentTable && line.includes('|')) {
+      if (currentSection && line.includes('|')) {
         const cells = line.split('|')
           .map(cell => cell.trim())
-          .filter(Boolean)
-          .map((content, index) => ({
-            content,
-            align: index === 1 ? ('center' as const) : ('left' as const)
-          }));
+          .filter(Boolean);
         
-        if (cells.length > 0) {
-          // Ensure we have exactly 5 cells
-          while (cells.length < 5) {
-            cells.push({ content: '', align: 'left' as const });
-          }
-          currentTable.rows.push({ cells: cells.slice(0, 5) });
+        if (cells.length >= 2) { // At least risk and status
+          const row = {
+            risk: cells[0] || '',
+            discussed: cells[1] || '',
+            details: cells[2] || '',
+            action: cells[3] || '',
+            actionFor: cells[4] || ''
+          };
+          
+          currentSection.rows.push(row);
         }
       }
     }
     
-    if (currentTable) {
-      sections.push(currentTable);
+    // Add the last section if exists
+    if (currentSection?.rows.length) {
+      sections.push(currentSection);
     }
     
     return sections;
   };
   
-  const copyToClipboard = async () => {
-    try {
-      const emailFriendlyText = createEmailFriendlyText(summary || '');
-      
-      // Create a temporary element to hold the HTML content
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = emailFriendlyText;
-      
-      // Use the Clipboard API to copy HTML content
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([tempDiv.innerHTML], { type: 'text/html' }),
-          'text/plain': new Blob([tempDiv.innerText], { type: 'text/plain' })
-        })
-      ]);
-      
-      setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-      // Fallback to plain text
-      navigator.clipboard.writeText(summary || '');
-      setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-    }
+  const copyToClipboard = () => {
+    const emailFriendlyText = createEmailFriendlyText(summary || '');
+    navigator.clipboard.writeText(emailFriendlyText);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   };
 
   // Process the summary text to properly render formatting
@@ -457,31 +416,34 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                           </div>
                           <div className="overflow-x-auto">
                             <div className="inline-block min-w-full align-middle">
-                              <table className="min-w-full border-collapse border border-gray-300" style={{ tableLayout: 'fixed' }}>
-                                <colgroup>
-                                  <col style={{ width: '15%' }} />
-                                  <col style={{ width: '10%' }} />
-                                  <col style={{ width: '35%' }} />
-                                  <col style={{ width: '25%' }} />
-                                  <col style={{ width: '15%' }} />
-                                </colgroup>
+                              <table className="min-w-full border-collapse border border-gray-300">
                                 <thead>
-                                  <tr className="bg-gray-50">
-                                    <th className="p-2 border border-gray-300 text-left font-semibold">Risico</th>
-                                    <th className="p-2 border border-gray-300 text-center font-semibold">Besproken</th>
-                                    <th className="p-2 border border-gray-300 text-left font-semibold">Bespreking Details</th>
-                                    <th className="p-2 border border-gray-300 text-left font-semibold">Actie</th>
-                                    <th className="p-2 border border-gray-300 text-left font-semibold">Actie voor</th>
+                                  <tr>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '150px' }}>Risico</th>
+                                    <th scope="col" className="px-3 py-2 text-center text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '100px' }}>Besproken</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '300px' }}>Bespreking Details</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '200px' }}>Actie</th>
+                                    <th scope="col" className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" style={{ minWidth: '150px' }}>Actie voor</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {table.rows.map((row, rowIndex) => (
                                     <tr key={rowIndex} className="hover:bg-gray-50">
-                                      <td className="p-2 border border-gray-300 text-left align-top whitespace-pre-wrap">{row.cells[0]?.content || ''}</td>
-                                      <td className="p-2 border border-gray-300 text-center">{row.cells[1]?.content || ''}</td>
-                                      <td className="p-2 border border-gray-300 text-left align-top whitespace-pre-wrap">{row.cells[2]?.content || ''}</td>
-                                      <td className="p-2 border border-gray-300 text-left align-top whitespace-pre-wrap">{row.cells[3]?.content || ''}</td>
-                                      <td className="p-2 border border-gray-300 text-left whitespace-pre-wrap">{row.cells[4]?.content || ''}</td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.risk}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 text-center">
+                                        {row.discussed}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.details}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300 align-top">
+                                        {row.action}
+                                      </td>
+                                      <td className="px-3 py-2 text-sm text-gray-900 border border-gray-300">
+                                        {row.actionFor}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
