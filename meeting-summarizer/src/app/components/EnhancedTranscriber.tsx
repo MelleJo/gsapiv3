@@ -435,7 +435,7 @@ export default function EnhancedTranscriber({
         
         // Call the transcribe-segment API with timeout
         // Increase timeout for each retry attempt
-        const timeoutDuration = 20000 + (attempts * 5000); // 20s base + 5s per attempt
+        const timeoutDuration = MAX_CLIENT_TIMEOUT; // Using maximum client timeout (~10 minutes)
         const response = await fetchWithTimeout(
           '/api/transcribe-segment',
           {

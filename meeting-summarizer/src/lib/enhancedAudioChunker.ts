@@ -13,7 +13,7 @@ export const TARGET_WAV_SIZE = 15 * 1024 * 1024; // Target 15MB WAV files to all
 export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
 export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time to maximize resources for each chunk
 export const DEFAULT_SAMPLE_RATE = 16000; // 16kHz is sufficient for speech recognition and reduces file size
-export const MAX_CLIENT_TIMEOUT = 600 * 1000; // 10 minutes in milliseconds, for client-side timeouts
+export const MAX_CLIENT_TIMEOUT = 700 * 1000; // 11.67 minutes in milliseconds, near maximum Fluid Compute limit (720 seconds)
 
 // Chunk status tracking
 export interface ChunkStatus {
@@ -321,6 +321,7 @@ async function fallbackBinaryChunking(audioBlob: Blob): Promise<Blob[]> {
       console.log(`Created binary chunk ${i+1}/${numChunks}: ${formatBytes(chunk.size)}`);
     }
     
+.
     return chunks;
   } catch (error) {
     console.error("Fallback audio decode failed, using pure binary chunking:", error);
