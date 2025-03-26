@@ -158,12 +158,13 @@ export default function EnhancedTranscriber({
         MAX_CONCURRENT_UPLOADS
       );
       
-      // Then transcribe all chunks
+      // Then transcribe all chunks with improved fault tolerance
       setCurrentStage('transcribing');
       
       // Custom implementation of processing for URL strings instead of Blobs
-      const transcriptions: string[] = [];
+      const transcriptions: string[] = Array(uploadedChunks.length).fill('');
       let completedTranscriptions = 0;
+      let failedTranscriptions = 0;
       
       // Process URLs in batches to control concurrency
       const maxConcurrentTranscriptions = 2; // Lower concurrency for transcription to avoid rate limits
@@ -177,14 +178,26 @@ export default function EnhancedTranscriber({
             completedTranscriptions++;
             
             // Update progress
-            const progress = Math.round((completedTranscriptions / uploadedChunks.length) * 100);
-            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions}/${uploadedChunks.length})...`);
+            const progress = Math.round(((completedTranscriptions + failedTranscriptions) / uploadedChunks.length) * 100);
+            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions + failedTranscriptions}/${uploadedChunks.length})...`);
             updateChunkProgress('transcribing', progress);
             
-            return { index: chunkIndex, result };
+            return { index: chunkIndex, result, success: true };
           } catch (error) {
+            // Mark this chunk as failed but don't fail the whole process
+            failedTranscriptions++;
             console.error(`Error transcribing chunk ${chunkIndex}:`, error);
-            throw { index: chunkIndex, error };
+            
+            // Update progress even for failed chunks
+            const progress = Math.round(((completedTranscriptions + failedTranscriptions) / uploadedChunks.length) * 100);
+            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions + failedTranscriptions}/${uploadedChunks.length})...`);
+            
+            return { 
+              index: chunkIndex, 
+              result: `[Transcription failed for segment ${chunkIndex + 1}]`, 
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            };
           }
         });
         
@@ -194,9 +207,17 @@ export default function EnhancedTranscriber({
         // Process results
         for (const result of batchResults) {
           if (result.status === 'fulfilled') {
-            transcriptions[result.value.index] = result.value.result;
+            const { index, result: transcription, success } = result.value;
+            transcriptions[index] = transcription;
+            
+            // Log error but don't fail the entire process
+            if (!success) {
+              console.warn(`Segment ${index + 1} failed but continuing with processing`);
+            }
           } else {
-            throw new Error(`Failed to transcribe chunk ${result.reason.index}: ${result.reason.error}`);
+            // This should rarely happen since we're already catching errors in the map function
+            console.error(`Unexpected promise rejection for batch:`, result.reason);
+            failedTranscriptions++;
           }
         }
         
@@ -204,6 +225,16 @@ export default function EnhancedTranscriber({
         if (i + maxConcurrentTranscriptions < uploadedChunks.length) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
+      }
+      
+      // Check if we have any successes
+      if (completedTranscriptions === 0 && failedTranscriptions > 0) {
+        throw new Error(`All ${failedTranscriptions} segments failed transcription. Please try again or use a different file.`);
+      }
+      
+      // Report partial success
+      if (failedTranscriptions > 0) {
+        console.warn(`Completed transcription with ${completedTranscriptions} successful segments and ${failedTranscriptions} failed segments`);
       }
       
       return transcriptions;
@@ -247,49 +278,126 @@ export default function EnhancedTranscriber({
     }
   };
 
-  // Transcribe a single chunk
+  // Transcribe a single chunk with retry logic
   const transcribeChunk = async (blobUrl: string, index: number): Promise<string> => {
-    try {
-      updateChunkStatus(index, { status: 'transcribing', progress: 0 });
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 3000; // 3 seconds
+    let attempts = 0;
+    let lastError: any = null;
+    
+    // Update initial status
+    updateChunkStatus(index, { status: 'transcribing', progress: 0, retries: attempts });
+    
+    // Function to add timeout to fetch
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 30000) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
       
-      // Call the transcribe-segment API
-      const response = await fetch('/api/transcribe-segment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          blobUrl,
-          segmentId: index,
-          model
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error ${response.status}`);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+      } catch (error) {
+        clearTimeout(id);
+        throw error;
       }
-      
-      const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
+    };
+    
+    // Retry loop
+    while (attempts < MAX_RETRIES) {
+      try {
+        updateChunkStatus(index, { 
+          status: 'transcribing', 
+          progress: Math.min(90, attempts * 30), // Show some progress
+          retries: attempts 
+        });
+        
+        console.log(`Transcribing segment ${index} (attempt ${attempts + 1}/${MAX_RETRIES})...`);
+        
+        // Call the transcribe-segment API with timeout
+        const response = await fetchWithTimeout(
+          '/api/transcribe-segment',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blobUrl,
+              segmentId: index,
+              model,
+              attempt: attempts + 1
+            })
+          },
+          45000 // 45 second timeout for fetch
+        );
+        
+        // Handle response errors
+        if (!response.ok) {
+          let errorMessage = `HTTP error ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // Ignore JSON parsing errors
+          }
+          throw new Error(errorMessage);
+        }
+        
+        // Parse result
+        const result = await response.json();
+        
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        
+        // Success - update status and return
+        updateChunkStatus(index, { 
+          status: 'completed', 
+          progress: 100,
+          transcription: result.transcription,
+          retries: attempts
+        });
+        
+        return result.transcription;
+        
+      } catch (error) {
+        lastError = error;
+        attempts++;
+        
+        // Only retry on certain errors that might be temporary
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isRetryable = 
+          errorMsg.includes('timeout') || 
+          errorMsg.includes('network') ||
+          errorMsg.includes('aborted') ||
+          errorMsg.includes('failed to fetch') ||
+          errorMsg.includes('rate limit') ||
+          (error instanceof TypeError) ||
+          (error instanceof DOMException);
+        
+        // Update status
+        updateChunkStatus(index, { 
+          status: attempts < MAX_RETRIES && isRetryable ? 'transcribing' : 'error',
+          error: errorMsg,
+          retries: attempts
+        });
+        
+        // If we've hit max retries or this is a non-retryable error, give up
+        if (attempts >= MAX_RETRIES || !isRetryable) {
+          console.error(`Max retries reached or non-retryable error for segment ${index}:`, errorMsg);
+          throw new Error(`Failed to transcribe segment ${index} after ${attempts} attempts: ${errorMsg}`);
+        }
+        
+        // Wait before retrying
+        console.log(`Retry attempt ${attempts}/${MAX_RETRIES} for segment ${index}. Waiting ${RETRY_DELAY/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       }
-      
-      updateChunkStatus(index, { 
-        status: 'completed', 
-        progress: 100,
-        transcription: result.transcription
-      });
-      
-      return result.transcription;
-    } catch (error) {
-      updateChunkStatus(index, { 
-        status: 'error', 
-        error: error instanceof Error ? error.message : 'Transcription failed'
-      });
-      throw error;
     }
+    
+    // This should never happen if the loop is set up correctly
+    throw lastError || new Error(`Failed to transcribe segment ${index} for unknown reasons`);
   };
 
   // Helper to update status of a specific chunk
