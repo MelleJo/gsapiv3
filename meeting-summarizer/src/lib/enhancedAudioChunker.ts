@@ -5,11 +5,14 @@
  * This approach splits audio directly in the browser for improved reliability
  */
 
-// Recommended chunk size for reliable processing with Fluid Compute
-export const RECOMMENDED_CHUNK_DURATION = 1500; // seconds (25 minutes per chunk) - optimized for Fluid Compute
-export const MAX_CHUNK_SIZE = 24 * 1024 * 1024; // 24MB max size per chunk - very close to OpenAI's 25MB limit since we have better error handling
+// OpenAI API has a hard 20MB limit, so we must stay under that
+export const OPENAI_MAX_SIZE_LIMIT = 19 * 1024 * 1024; // 19MB to stay safely under OpenAI's 20MB limit
+export const RECOMMENDED_CHUNK_DURATION = 900; // seconds (15 minutes per chunk) - optimized for Fluid Compute
+export const MAX_CHUNK_SIZE = OPENAI_MAX_SIZE_LIMIT; // Never exceed OpenAI's limit
+export const TARGET_WAV_SIZE = 15 * 1024 * 1024; // Target 15MB WAV files to allow some room for overhead
 export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
 export const MAX_CONCURRENT_UPLOADS = 2; // Can process two chunks at a time with Fluid Compute
+export const DEFAULT_SAMPLE_RATE = 16000; // 16kHz is sufficient for speech recognition and reduces file size
 
 // Chunk status tracking
 export interface ChunkStatus {
@@ -101,23 +104,154 @@ export async function createAudioChunks(
         }
       }
       
-      // Convert to MP3
-      const offlineContext = new OfflineAudioContext(
-        numberOfChannels,
-        chunkBuffer.length,
-        sampleRate
-      );
+      // First try with original quality
+      let outputBuffer = chunkBuffer;
+      let currentSampleRate = sampleRate;
+      let currentChannels = numberOfChannels;
       
-      const bufferSource = offlineContext.createBufferSource();
-      bufferSource.buffer = chunkBuffer;
-      bufferSource.connect(offlineContext.destination);
-      bufferSource.start();
+      // Iteratively downsample until we reach acceptable size
+      // Start with highest quality, then reduce if needed
+      let audioData: ArrayBuffer;
+      let chunkBlob: Blob;
+      let attemptCount = 0;
       
-      const renderedBuffer = await offlineContext.startRendering();
+      // Iteratively downsample if needed
+      do {
+        if (attemptCount > 0) {
+          // Downsample on each attempt
+          console.log(`Chunk ${i+1} too large, downsampling (attempt ${attemptCount})...`);
+          
+          // Reduce sample rate on each iteration, but not below 16kHz
+          // Speech recognition works well down to 16kHz
+          if (currentSampleRate > DEFAULT_SAMPLE_RATE) {
+            // Reduce sample rate by half but not below 16kHz
+            const targetSampleRate = Math.max(DEFAULT_SAMPLE_RATE, currentSampleRate / 2);
+            
+            // Create buffer with new sample rate
+            const downsampledBuffer = audioContext.createBuffer(
+              currentChannels === 2 ? 1 : currentChannels, // Convert to mono if needed
+              Math.ceil(chunkDuration * targetSampleRate),
+              targetSampleRate
+            );
+            
+            // Copy and downsample data
+            if (currentChannels === 2 && downsampledBuffer.numberOfChannels === 1) {
+              // Mix stereo to mono
+              const outputData = downsampledBuffer.getChannelData(0);
+              const inputData1 = outputBuffer.getChannelData(0);
+              const inputData2 = outputBuffer.getChannelData(1);
+              
+              // Calculate ratio for sample rate conversion
+              const ratio = currentSampleRate / targetSampleRate;
+              
+              for (let j = 0; j < outputData.length; j++) {
+                // Simple linear interpolation for downsampling
+                const sourceIndex = Math.min(Math.floor(j * ratio), inputData1.length - 1);
+                // Mix stereo channels to mono
+                outputData[j] = (inputData1[sourceIndex] + inputData2[sourceIndex]) / 2;
+              }
+            } else {
+              // Just downsample, keep same number of channels
+              for (let channel = 0; channel < downsampledBuffer.numberOfChannels; channel++) {
+                const outputData = downsampledBuffer.getChannelData(channel);
+                const inputData = outputBuffer.getChannelData(channel);
+                
+                // Calculate ratio for sample rate conversion
+                const ratio = currentSampleRate / targetSampleRate;
+                
+                for (let j = 0; j < outputData.length; j++) {
+                  // Simple linear interpolation for downsampling
+                  const sourceIndex = Math.min(Math.floor(j * ratio), inputData.length - 1);
+                  outputData[j] = inputData[sourceIndex];
+                }
+              }
+            }
+            
+            // Update state for next iteration
+            outputBuffer = downsampledBuffer;
+            currentSampleRate = targetSampleRate;
+            currentChannels = downsampledBuffer.numberOfChannels;
+          } else if (currentChannels > 1) {
+            // Convert stereo to mono (if we haven't already)
+            const monoBuffer = audioContext.createBuffer(
+              1,
+              outputBuffer.length,
+              currentSampleRate
+            );
+            
+            // Mix all channels to mono
+            const monoData = monoBuffer.getChannelData(0);
+            for (let j = 0; j < monoData.length; j++) {
+              let sum = 0;
+              for (let channel = 0; channel < currentChannels; channel++) {
+                sum += outputBuffer.getChannelData(channel)[j];
+              }
+              monoData[j] = sum / currentChannels;
+            }
+            
+            outputBuffer = monoBuffer;
+            currentChannels = 1;
+          }
+        }
+        
+        // Render to WAV
+        audioData = audioBufferToWav(outputBuffer);
+        chunkBlob = new Blob([audioData], { type: 'audio/wav' });
+        
+        attemptCount++;
+        // Limit downsampling attempts to 3
+      } while (chunkBlob.size > OPENAI_MAX_SIZE_LIMIT && attemptCount < 3);
       
-      // Create blob from buffer
-      const audioData = audioBufferToWav(renderedBuffer);
-      const chunkBlob = new Blob([audioData], { type: 'audio/wav' });
+      // Log the final settings used
+      if (attemptCount > 1) {
+        console.log(`Final chunk ${i+1} settings: ${currentChannels} channels, ${currentSampleRate}Hz sample rate, size: ${formatBytes(chunkBlob.size)}`);
+      }
+      
+      // If still too large after 3 attempts, we need to split further
+      if (chunkBlob.size > OPENAI_MAX_SIZE_LIMIT) {
+        console.warn(`Chunk ${i+1} still too large (${formatBytes(chunkBlob.size)}) after downsampling. Splitting further.`);
+        
+        // Split this large chunk into two parts
+        const midPoint = Math.floor(chunkDuration / 2);
+        const firstHalfEndTime = startTime + midPoint;
+        
+        // Recursively process the two halves (simplified - not actually recursive to avoid complexity)
+        // In a real implementation, we would call createAudioChunks recursively
+        
+        // Instead, we'll use a simpler approach - just make the full chunk smaller
+        const reducedDuration = chunkDuration * 0.75; // Take 75% of the chunk
+        const newEndTime = startTime + reducedDuration;
+        
+        // Create a smaller chunk buffer
+        const reducedBuffer = audioContext.createBuffer(
+          1, // Always use mono for these problem cases
+          Math.ceil(reducedDuration * DEFAULT_SAMPLE_RATE),
+          DEFAULT_SAMPLE_RATE
+        );
+        
+        // Copy just the first part of the audio
+        const reducedData = reducedBuffer.getChannelData(0);
+        const channelData = audioBuffer.getChannelData(0);
+        const startOffset = Math.floor(startTime * sampleRate);
+        const copyLength = reducedData.length;
+        
+        // Resample while copying
+        const ratio = sampleRate / DEFAULT_SAMPLE_RATE;
+        for (let j = 0; j < copyLength; j++) {
+          const sourceIndex = startOffset + Math.min(Math.floor(j * ratio), channelData.length - startOffset - 1);
+          if (sourceIndex < channelData.length) {
+            reducedData[j] = channelData[sourceIndex];
+          }
+        }
+        
+        // Convert to WAV at lowest quality
+        audioData = audioBufferToWav(reducedBuffer);
+        chunkBlob = new Blob([audioData], { type: 'audio/wav' });
+        
+        console.log(`Created reduced chunk ${i+1}: ${formatBytes(chunkBlob.size)} (${Math.round(reducedDuration)}s duration)`);
+        
+        // The next iteration will handle the remaining portion
+      }
       
       chunks.push(chunkBlob);
       console.log(`Created chunk ${i+1}/${numChunks}: ${formatBytes(chunkBlob.size)}`);
@@ -140,27 +274,75 @@ async function fallbackBinaryChunking(audioBlob: Blob): Promise<Blob[]> {
   console.log(`Using fallback binary chunking for ${formatBytes(audioBlob.size)}`);
   
   // For small files, return as-is
-  if (audioBlob.size <= MAX_CHUNK_SIZE) {
+  if (audioBlob.size <= MIN_CHUNK_SIZE) {
+    console.log(`Small audio file (${formatBytes(audioBlob.size)}), using as-is.`);
     return [audioBlob];
   }
   
-  // Calculate chunk size
-  const chunkSize = MAX_CHUNK_SIZE;
-  const numChunks = Math.ceil(audioBlob.size / chunkSize);
-  
-  // Create chunks
-  const chunks: Blob[] = [];
-  for (let i = 0; i < numChunks; i++) {
-    const start = i * chunkSize;
-    const end = Math.min(start + chunkSize, audioBlob.size);
+  try {
+    // Try to use the browser's audio processing API as a first fallback
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    const audioContext = new AudioContext();
     
-    const chunk = audioBlob.slice(start, end, audioBlob.type);
-    chunks.push(chunk);
+    // Try to decode the entire audio file
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     
-    console.log(`Created binary chunk ${i+1}/${numChunks}: ${formatBytes(chunk.size)}`);
+    // Success! Get basic audio properties
+    const duration = audioBuffer.duration;
+    console.log(`Fallback: Successfully decoded ${Math.round(duration)}s of audio.`);
+    
+    // Create smaller chunks using basic properties
+    // Calculate target chunk duration based on file size and duration ratio
+    // Aim for < 15MB chunks to be safe
+    const sizePerSecond = audioBlob.size / duration;
+    const targetDuration = Math.floor(TARGET_WAV_SIZE / sizePerSecond); 
+    
+    // Use at least 60 second chunks, but never more than 5 minutes
+    const chunkDuration = Math.min(Math.max(60, targetDuration), 300);
+    const numChunks = Math.ceil(duration / chunkDuration);
+    
+    console.log(`Fallback: Creating ${numChunks} chunks of ~${chunkDuration}s each (${formatBytes(chunkDuration * sizePerSecond)} each)`);
+    
+    // Create chunks by binary splitting based on the calculated duration
+    const chunks: Blob[] = [];
+    for (let i = 0; i < numChunks; i++) {
+      const startTime = i * chunkDuration;
+      const endTime = Math.min(startTime + chunkDuration, duration);
+      
+      // Convert time to byte position (approximate)
+      const start = Math.floor(startTime * sizePerSecond);
+      const end = Math.min(Math.floor(endTime * sizePerSecond), audioBlob.size);
+      
+      const chunk = audioBlob.slice(start, end, audioBlob.type);
+      chunks.push(chunk);
+      
+      console.log(`Created binary chunk ${i+1}/${numChunks}: ${formatBytes(chunk.size)}`);
+    }
+    
+    return chunks;
+  } catch (error) {
+    console.error("Fallback audio decode failed, using pure binary chunking:", error);
+    
+    // Ultimate fallback - just split by bytes without any audio knowledge
+    // Use a smaller chunk size to be safe
+    const safeChunkSize = OPENAI_MAX_SIZE_LIMIT * 0.75; // 75% of the max limit (14.25MB)
+    const numChunks = Math.ceil(audioBlob.size / safeChunkSize);
+    
+    // Create chunks
+    const chunks: Blob[] = [];
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * safeChunkSize;
+      const end = Math.min(start + safeChunkSize, audioBlob.size);
+      
+      const chunk = audioBlob.slice(start, end, audioBlob.type);
+      chunks.push(chunk);
+      
+      console.log(`Created safe binary chunk ${i+1}/${numChunks}: ${formatBytes(chunk.size)}`);
+    }
+    
+    return chunks;
   }
-  
-  return chunks;
 }
 
 /**

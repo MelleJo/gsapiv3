@@ -1,7 +1,7 @@
 // src/app/api/transcribe-segment/route.ts
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
-import { formatBytes } from '@/lib/enhancedAudioChunker';
+import { formatBytes, OPENAI_MAX_SIZE_LIMIT } from '@/lib/enhancedAudioChunker';
 
 export const runtime = 'edge';
 export const maxDuration = 600; // 10 minutes (600 seconds) with Fluid Compute enabled
@@ -144,8 +144,8 @@ export async function POST(request: Request) {
         
         console.log(`Direct blob base64 length: ${base64Length}, estimated size: ${formatBytes(estimatedByteSize)}`);
         
-        if (estimatedByteSize > 20 * 1024 * 1024) {
-          throw new Error(`Direct blob is too large (estimated ${formatBytes(estimatedByteSize)}). Maximum size is 20MB.`);
+        if (estimatedByteSize > OPENAI_MAX_SIZE_LIMIT) {
+          throw new Error(`Direct blob is too large (estimated ${formatBytes(estimatedByteSize)}). Maximum size is ${formatBytes(OPENAI_MAX_SIZE_LIMIT)}.`);
         }
         
         try {
@@ -216,8 +216,8 @@ export async function POST(request: Request) {
         console.log(`Segment ${segmentId} fetched: ${formatBytes(segmentBlob.size)}`);
         
         // Validate segment size - reject if too large
-        if (segmentBlob.size > 20 * 1024 * 1024) { // 20MB max for whisper API
-          throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is 20MB.`);
+        if (segmentBlob.size > OPENAI_MAX_SIZE_LIMIT) { 
+          throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is ${formatBytes(OPENAI_MAX_SIZE_LIMIT)}.`);
         }
         
         // Create a File object for OpenAI API
@@ -311,7 +311,7 @@ export async function POST(request: Request) {
 // Helper function to enhance error messages for better diagnosis
 function enhanceErrorMessage(errorMessage: string): string {
   if (errorMessage.includes('too large')) {
-    return `Audio segment is too large. Maximum size is 20MB.`;
+    return `Audio segment is too large. Maximum size is ${formatBytes(OPENAI_MAX_SIZE_LIMIT)}.`;
   } else if (errorMessage.includes('timeout')) {
     return `Timeout processing audio segment. The segment may be too long or the service is experiencing high load.`;
   } else if (errorMessage.includes('rate limit')) {
