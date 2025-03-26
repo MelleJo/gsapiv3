@@ -3,12 +3,12 @@
 import React, { useRef, useState, forwardRef, HTMLAttributes, useEffect } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { motion, MotionProps } from 'framer-motion';
-import { upload } from '@vercel/blob/client';
 import AudioConverter from './AudioConverter';
-import { formatBytes } from '@/lib/audioChunker';
+import EnhancedTranscriber from './EnhancedTranscriber';
+import { formatBytes } from '@/lib/enhancedAudioChunker';
 
 // Toggle to enable or disable FFmpeg conversion
-const ENABLE_FFMPEG_CONVERSION = true; // Enable FFmpeg conversion for all audio files
+const ENABLE_FFMPEG_CONVERSION = true;
 
 // Define motion button component with proper typing
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { 
@@ -21,7 +21,7 @@ const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, re
 ));
 MotionButton.displayName = 'MotionButton';
 
-// Define the BlobFile interface inline to prevent import errors
+// Define the BlobFile interface inline for completeness
 interface BlobFile {
   url: string;
   pathname: string;
@@ -32,28 +32,45 @@ interface BlobFile {
 
 interface FileUploaderProps {
   onFileUploaded: (blob: BlobFile) => void;
+  onTranscriptionStart?: () => void;
+  onTranscriptionComplete?: (transcription: string) => void;
+  onTranscriptionError?: (error: string) => void;
+  onTranscriptionProgress?: (progress: number, status: string) => void;
+  onTranscriptionStatusUpdate?: (status: {
+    stage: string;
+    currentChunk?: number;
+    totalChunks?: number;
+    message?: string;
+  }) => void;
+  transcriptionModel?: string;
 }
 
-export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
+export default function FileUploader({ 
+  onFileUploaded, 
+  onTranscriptionStart,
+  onTranscriptionComplete,
+  onTranscriptionError,
+  onTranscriptionProgress,
+  onTranscriptionStatusUpdate,
+  transcriptionModel = 'whisper-1'
+}: FileUploaderProps) {
   const inputFileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [isClientUpload, setIsClientUpload] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [convertedFile, setConvertedFile] = useState<File | null>(null);
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [conversionProgress, setConversionProgress] = useState<number>(0);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [fileInfo, setFileInfo] = useState<{
     size: string;
     duration: string;
     format: string;
   } | null>(null);
   
-  // Define the threshold for server vs client uploads - use a smaller size to improve performance
-  const SERVER_UPLOAD_LIMIT = 2 * 1024 * 1024; // 2MB (reduced from 4MB to avoid timeout issues)
-
   // Handle file selection change
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -90,182 +107,8 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       
       // Display warning for large files
       if (file.size > 100 * 1024 * 1024) {
-        setError('Let op: dit bestand is erg groot. De verwerking kan enige tijd duren en mogelijk niet slagen. Overweeg een kleiner bestand te gebruiken.');
-      } else if (file.size > 50 * 1024 * 1024) {
-        setError('Let op: dit is een groot bestand. De verwerking kan enkele minuten duren.');
+        setError('Let op: dit bestand is erg groot. De verwerking wordt opgedeeld in meerdere delen.');
       }
-    }
-  };
-
-  // Handle file upload
-  const handleUpload = async (fileToUpload: File) => {
-    if (!fileToUpload) {
-      setError('Geen bestand geselecteerd');
-      return;
-    }
-
-    // Create a comprehensive mapping of file extensions to valid MIME types
-    const validMimeTypes = {
-      // Common audio formats
-      mp3: ['audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3'],
-      wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
-      ogg: ['audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga'],
-      flac: ['audio/flac', 'audio/x-flac'],
-      m4a: ['audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4'],
-      aac: ['audio/aac', 'audio/x-aac', 'audio/aacp'],
-      webm: ['audio/webm'],
-      // Video formats that contain audio
-      mp4: ['video/mp4', 'video/x-mp4', 'application/mp4'],
-      videoWebm: ['video/webm']
-    };
-    
-    // Get file extension from name and MIME type
-    const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase() || '';
-    const fileType = fileToUpload.type.toLowerCase();
-    
-    // Check if the file is a valid audio or video type
-    const isValidType = 
-      // Check if it's a recognized audio/video MIME type
-      fileType.startsWith('audio/') || fileType.startsWith('video/') ||
-      // Check against our specific mappings
-      Object.values(validMimeTypes).some(mimeTypes => 
-        mimeTypes.includes(fileType)
-      ) ||
-      // Fallback to extension check if browsers report generic MIME types
-      (fileExt && Object.keys(validMimeTypes).includes(fileExt));
-    
-    if (!isValidType) {
-      setError('Ongeldig bestandsformaat. Upload een audio of video bestand.');
-      return;
-    }
-    
-    // Check file size (reduced from 500MB to 200MB limit for better Vercel performance)
-    const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB in bytes
-    if (fileToUpload.size > MAX_FILE_SIZE) {
-      setError(`Bestand te groot (${formatBytes(fileToUpload.size)}). Maximale bestandsgrootte is 200MB.`);
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setError('');
-      setUploadProgress(0);
-      
-      let blobData: BlobFile;
-      
-      // Create a unique name to prevent collisions
-      const uniquePrefix = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-      const safeFileName = fileToUpload.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const uniqueFileName = `${uniquePrefix}-${safeFileName}`;
-      
-      // Determine upload method based on file size
-      if (fileToUpload.size <= SERVER_UPLOAD_LIMIT) {
-        // Small file: Use server upload (faster, simpler)
-        setIsClientUpload(false);
-        
-        // Create FormData to send file
-        const formData = new FormData();
-        formData.append('file', fileToUpload);
-        
-        const response = await fetch('/api/upload-blob', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        // First check if the response is OK before attempting to parse JSON
-        if (!response.ok) {
-          // Try to parse as JSON, but handle the case where it's not valid JSON
-          try {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Upload mislukt');
-          } catch (jsonError) {
-            // If JSON parsing fails, use the status text or a generic message
-            throw new Error(`Upload mislukt: ${response.status} ${response.statusText || 'Onbekende fout'}`);
-          }
-        }
-        
-        // Now parse the response as JSON, with error handling
-        let data;
-        try {
-          data = await response.json();
-        } catch (jsonError) {
-          console.error('JSON parsing error:', jsonError);
-          throw new Error('Kon serverrespons niet verwerken. Probeer het opnieuw.');
-        }
-        
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        
-        blobData = data.blob;
-      } else {
-        // Large file: Use client upload with chunked progress tracking
-        setIsClientUpload(true);
-        
-        // For very large files, we'll display a warning
-        if (fileToUpload.size > 50 * 1024 * 1024) { // 50MB
-          console.warn('Large file upload initiated, this may take some time');
-        }
-        
-        // Direct browser-to-blob upload
-        try {
-          const blob = await upload(uniqueFileName, fileToUpload, {
-            access: 'public',
-            handleUploadUrl: '/api/client-upload',
-            onUploadProgress: (progress) => {
-              // Update UI with upload progress
-              setUploadProgress(progress.percentage);
-            }
-            // Note: We've removed the maxRetries property here since it's not part of the type
-          });
-          
-          // Create a compatible BlobFile object from the result
-          blobData = {
-            url: blob.url,
-            pathname: blob.pathname,
-            size: fileToUpload.size,
-            contentType: fileToUpload.type,
-            originalName: fileToUpload.name
-          };
-        } catch (uploadError) {
-          console.error('Upload failed:', uploadError);
-          // If direct upload fails, try with smaller chunk size - this is a fallback
-          throw new Error(`Directe upload mislukt: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
-        }
-      }
-      
-      // Call the callback with the blob data
-      if (onFileUploaded) {
-        onFileUploaded(blobData);
-      }
-      
-      // Reset state after successful upload
-      setFileName('');
-      setSelectedFile(null);
-      setIsClientUpload(false);
-      setFileInfo(null);
-      if (inputFileRef.current) {
-        inputFileRef.current.value = '';
-      }
-      
-    } catch (err) {
-      console.error('Upload fout:', err);
-      
-      // Provide more detailed error messages
-      if (err instanceof Error) {
-        if (err.message.includes('413')) {
-          setError('Bestand is te groot voor directe upload. Verwerk de 413 fout intern.');
-        } else if (err.message.includes('network') || err.message.includes('connection')) {
-          setError('Netwerkfout tijdens uploaden. Controleer je verbinding en probeer opnieuw.');
-        } else {
-          setError(err.message);
-        }
-      } else {
-        setError('Upload mislukt');
-      }
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
     }
   };
 
@@ -274,6 +117,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     console.log(`Conversion complete: ${convertedFile.name} (${formatBytes(convertedFile.size)})`);
     setIsConverting(false);
     setFileName(convertedFile.name);
+    setConvertedFile(convertedFile);
     
     // Update file info after conversion
     setFileInfo(prev => {
@@ -286,9 +130,6 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       }
       return prev;
     });
-    
-    // Automatically start upload after conversion
-    handleUpload(convertedFile);
   };
 
   // Handle conversion error
@@ -309,9 +150,30 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     }
   };
 
-  // Start the upload or conversion process
+  // Handle transcription completion
+  const handleTranscriptionComplete = (transcription: string) => {
+    setIsTranscribing(false);
+    
+    // Forward the transcription to the parent component if provided
+    if (onTranscriptionComplete) {
+      onTranscriptionComplete(transcription);
+    }
+  };
+
+  // Handle transcription error
+  const handleTranscriptionError = (error: string) => {
+    setIsTranscribing(false);
+    setError(`Transcriptie fout: ${error}`);
+    
+    // Forward the error to the parent component if provided
+    if (onTranscriptionError) {
+      onTranscriptionError(error);
+    }
+  };
+
+  // Start the transcription and processing flow
   const startProcess = () => {
-    if (!selectedFile) {
+    if (!selectedFile && !convertedFile) {
       setError('Geen bestand geselecteerd');
       return;
     }
@@ -319,7 +181,10 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
     setError('');
     
     // Get file extension
-    const fileExt = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+    const fileToProcess = convertedFile || selectedFile;
+    if (!fileToProcess) return;
+    
+    const fileExt = fileToProcess.name.split('.').pop()?.toLowerCase() || '';
     
     // Check if we should convert this file
     const needsConversion = 
@@ -327,14 +192,19 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       // Always convert non-MP3 files
       (fileExt !== 'mp3' || 
        // Also convert large MP3 files for optimization
-       (fileExt === 'mp3' && selectedFile.size > 20 * 1024 * 1024));
+       (fileExt === 'mp3' && fileToProcess.size > 20 * 1024 * 1024));
     
-    if (needsConversion) {
+    if (needsConversion && !convertedFile) {
       setIsConverting(true);
       setConversionProgress(0);
     } else {
-      // If no conversion needed, upload directly
-      handleUpload(selectedFile);
+      // Start transcription process using our enhanced transcriber
+      setIsTranscribing(true);
+      
+      // Notify parent that transcription is starting
+      if (onTranscriptionStart) {
+        onTranscriptionStart();
+      }
     }
   };
 
@@ -381,6 +251,9 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
         videoWebm: ['video/webm']
       };
       
+      // Valid extensions list
+      const validExtensions = Object.keys(validMimeTypes);
+      
       // Check if the file is a valid audio or video type
       const isValidType = 
         // Check if it's a recognized audio/video MIME type
@@ -390,7 +263,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           mimeTypes.includes(fileType)
         ) ||
         // Fallback to extension check if browsers report generic MIME types
-        (fileExt && Object.keys(validMimeTypes).includes(fileExt));
+        (fileExt && validExtensions.includes(fileExt));
         
       if (isValidType) {
         if (inputFileRef.current) {
@@ -402,13 +275,14 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           // Set the filename and reset error
           setFileName(file.name);
           setSelectedFile(file);
+          setConvertedFile(null); // Reset converted file when new file is selected
           setError('');
           
           // Display file information
           const fileSizeStr = formatBytes(file.size);
           let estimatedDuration = "Onbekend";
           
-          // Estimate duration based on file size (rough estimate: 1MB ≈ 1 minute for compressed audio)
+          // Estimate duration based on file size
           if (file.size) {
             const durationMinutes = Math.round(file.size / (1024 * 1024));
             
@@ -429,9 +303,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           
           // Display warning for large files
           if (file.size > 100 * 1024 * 1024) {
-            setError('Let op: dit bestand is erg groot. De verwerking kan enige tijd duren en mogelijk niet slagen. Overweeg een kleiner bestand te gebruiken.');
-          } else if (file.size > 50 * 1024 * 1024) {
-            setError('Let op: dit is een groot bestand. De verwerking kan enkele minuten duren.');
+            setError('Let op: dit bestand is erg groot. De verwerking wordt opgedeeld in meerdere delen.');
           }
         }
       } else {
@@ -511,7 +383,7 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
           )}
           
           {error && (
-            <div className="mt-3 p-2 bg-red-50 rounded-lg text-sm text-red-700">
+            <div className="mt-3 p-2 bg-yellow-50 rounded-lg text-sm text-yellow-700">
               {error}
             </div>
           )}
@@ -527,61 +399,65 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
       </div>
       
       <div className="w-full">
-        {/* Audio Converter Component - only renders when enabled and needed */}
+        {/* Audio Converter Component - only renders when needed */}
         {isConverting && selectedFile && ENABLE_FFMPEG_CONVERSION && (
           <div className="mt-4">
             <AudioConverter
               file={selectedFile}
               onConversionComplete={handleConversionComplete}
               onError={handleConversionError}
-              targetFormat="mp3" // Changed from wav to mp3 for more efficient file size
+              targetFormat="mp3"
               onProgress={handleConversionProgress}
             />
           </div>
         )}
         
-        {/* Upload Progress Bar */}
-        {uploading && isClientUpload && (
-          <div className="mt-4 w-full">
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-blue-600 rounded-full transition-all duration-300" 
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-            <p className="text-xs text-center mt-1 text-neutral-500">
-              {uploadProgress.toFixed(0)}% verwerkt
-            </p>
-          </div>
-        )}
+        {/* Enhanced Transcriber Component */}
+        {isTranscribing && (fileToProcess => {
+          if (fileToProcess) {
+            return (
+              <div className="mt-4">
+                <EnhancedTranscriber
+                  audioFile={fileToProcess}
+                  onTranscriptionComplete={handleTranscriptionComplete}
+                  onError={handleTranscriptionError}
+                  onProgress={onTranscriptionProgress}
+                  onStatusUpdate={onTranscriptionStatusUpdate}
+                  model={transcriptionModel}
+                />
+              </div>
+            );
+          }
+          return null;
+        })(convertedFile || selectedFile)}
         
-        {/* Upload/Convert Button */}
+        {/* Process Button */}
         <MotionButton
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={startProcess}
-          disabled={!fileName || uploading || isConverting}
+          disabled={!fileName || isConverting || isTranscribing}
           className={`mt-4 px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all w-full justify-center ${
-            !fileName || uploading || isConverting
+            !fileName || isConverting || isTranscribing
               ? 'bg-neutral-300 cursor-not-allowed'
               : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-md'
           }`}
         >
-          {uploading ? (
+          {isConverting ? (
             <>
               <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              {isClientUpload ? 'Direct uploaden naar Vercel Blob...' : 'Uploaden...'}
+              Audio converteren... ({conversionProgress}%)
             </>
-          ) : isConverting ? (
+          ) : isTranscribing ? (
             <>
               <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Bestand converteren naar MP3... ({conversionProgress}%)
+              Transcriberen...
             </>
           ) : (
             <>
@@ -595,11 +471,10 @@ export default function FileUploader({ onFileUploaded }: FileUploaderProps) {
                 strokeLinecap="round" 
                 strokeLinejoin="round"
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
               </svg>
-              Bestand uploaden
+              Start Verwerking
             </>
           )}
         </MotionButton>

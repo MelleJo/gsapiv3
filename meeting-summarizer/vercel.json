@@ -5,8 +5,11 @@
       "memory": 3008
     },
     "src/app/api/transcribe-segment/route.ts": {
-      "maxDuration": 120,
+      "maxDuration": 60,
       "memory": 1024
+    },
+    "src/app/api/client-upload/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [

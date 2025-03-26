@@ -1,11 +1,10 @@
 // src/app/api/transcribe-segment/route.ts
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
-import { withRetry } from '@/lib/utils';
-import { formatBytes } from '@/lib/audioChunker';
+import { formatBytes } from '@/lib/enhancedAudioChunker';
 
 export const runtime = 'edge';
-export const maxDuration = 120; // 2 minutes max execution time for a single segment
+export const maxDuration = 60; // Reduced to 60 seconds per segment for better reliability
 
 // Add a timeout wrapper for any promise
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
@@ -38,7 +37,6 @@ export async function POST(request: Request) {
     
     // Required parameters
     const blobUrl = body.blobUrl;
-    const fileName = body.fileName || 'segment.mp3';
     const segmentId = body.segmentId ?? 0;
     const modelId = body.model || 'whisper-1';
     
@@ -54,7 +52,7 @@ export async function POST(request: Request) {
     console.log(`Fetching segment ${segmentId} from blob URL`);
     const audioResponse = await withTimeout(
       fetch(blobUrl), 
-      60000, // 60 second timeout for fetch
+      30000, // 30 second timeout for fetch
       `Timeout fetching segment ${segmentId}`
     );
     
@@ -66,33 +64,31 @@ export async function POST(request: Request) {
     console.log(`Segment ${segmentId} fetched: ${formatBytes(segmentBlob.size)}`);
     
     // Validate segment size - reject if too large
-    if (segmentBlob.size > 25 * 1024 * 1024) { // 25MB max for OpenAI API
-      throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is 25MB.`);
+    if (segmentBlob.size > 20 * 1024 * 1024) { // 20MB max for whisper API
+      throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is 20MB.`);
     }
     
     // Create a File object for OpenAI API
-    const fileObject = new File([segmentBlob], fileName, { 
+    const fileObject = new File([segmentBlob], `segment_${segmentId}.mp3`, { 
       type: 'audio/mpeg',
       lastModified: Date.now()
     });
     
-    // Process with OpenAI Whisper with retries
+    // Process with OpenAI Whisper with timeout
     console.log(`Transcribing segment ${segmentId} with model ${modelId}`);
     
-    const processSegment = async () => {
-      return await openai.audio.transcriptions.create({
-        file: fileObject,
-        model: modelId,
-        language: 'nl',
-        response_format: 'text',
-      });
-    };
+    const transcriptionPromise = openai.audio.transcriptions.create({
+      file: fileObject,
+      model: modelId,
+      language: 'nl',
+      response_format: 'text',
+    });
     
-    // Use withRetry for more robust processing
-    const transcription = await withRetry(
-      processSegment, 
-      2, // 2 retries (3 attempts total)
-      2000 // 2 second initial delay between retries
+    // Set a timeout for the transcription process
+    const transcription = await withTimeout(
+      transcriptionPromise,
+      45000, // 45 second timeout for transcription
+      `Transcription timeout for segment ${segmentId}`
     );
     
     console.log(`Segment ${segmentId} transcription complete: ${transcription.length} characters`);
@@ -114,7 +110,7 @@ export async function POST(request: Request) {
     let enhancedErrorMessage = errorMessage;
     
     if (errorMessage.includes('too large')) {
-      enhancedErrorMessage = `Audio segment is too large. Maximum size is 25MB.`;
+      enhancedErrorMessage = `Audio segment is too large. Maximum size is 20MB.`;
     } else if (errorMessage.includes('timeout')) {
       enhancedErrorMessage = `Timeout processing audio segment. The segment may be too long.`;
     } else if (errorMessage.includes('rate limit')) {
