@@ -278,26 +278,51 @@ export default function EnhancedTranscriber({
     }
   };
 
-  // Transcribe a single chunk with retry logic
+  // Transcribe a single chunk with advanced retry logic and exponential backoff
   const transcribeChunk = async (blobUrl: string, index: number): Promise<string> => {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 3000; // 3 seconds
+    const MAX_RETRIES = 5; // Increased from 3 to 5
+    const BASE_RETRY_DELAY = 2000; // 2 seconds base delay
+    const MAX_RETRY_DELAY = 15000; // Maximum delay cap (15 seconds)
     let attempts = 0;
     let lastError: any = null;
     
     // Update initial status
     updateChunkStatus(index, { status: 'transcribing', progress: 0, retries: attempts });
     
-    // Function to add timeout to fetch
-    const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 30000) => {
+    // Function to add timeout to fetch with more robust error handling
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 25000) => {
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), timeout);
+      const id = setTimeout(() => {
+        controller.abort();
+        console.warn(`Request timeout for segment ${index} after ${timeout}ms`);
+      }, timeout);
       
       try {
+        // For blob URLs, first check if they're accessible
+        if (url.includes('/api/transcribe-segment')) {
+          const blobUrlCheck = JSON.parse(options.body as string).blobUrl;
+          
+          // Verify blob URL is accessible with a HEAD request before proceeding
+          try {
+            const blobCheck = await fetch(blobUrlCheck, { 
+              method: 'HEAD',
+              signal: AbortSignal.timeout(10000) // 10 second timeout just for the head check
+            });
+            
+            if (!blobCheck.ok) {
+              throw new Error(`Blob URL check failed with status ${blobCheck.status}`);
+            }
+          } catch (blobError) {
+            console.error(`Blob URL validation failed for segment ${index}:`, blobError);
+            throw new Error(`Blob unavailable or inaccessible: ${blobError instanceof Error ? blobError.message : String(blobError)}`);
+          }
+        }
+        
         const response = await fetch(url, {
           ...options,
           signal: controller.signal
         });
+        
         clearTimeout(id);
         return response;
       } catch (error) {
@@ -306,18 +331,32 @@ export default function EnhancedTranscriber({
       }
     };
     
+    // Helper to calculate exponential backoff with jitter
+    const getBackoffDelay = (attempt: number): number => {
+      // Exponential backoff with full jitter
+      const expBackoff = Math.min(
+        MAX_RETRY_DELAY,
+        BASE_RETRY_DELAY * Math.pow(2, attempt)
+      );
+      // Add jitter to prevent thundering herd problem
+      return Math.floor(Math.random() * expBackoff);
+    };
+    
     // Retry loop
     while (attempts < MAX_RETRIES) {
       try {
+        // Show progressive status in the UI
         updateChunkStatus(index, { 
           status: 'transcribing', 
-          progress: Math.min(90, attempts * 30), // Show some progress
+          progress: Math.min(90, attempts * 20), // Show some progress
           retries: attempts 
         });
         
         console.log(`Transcribing segment ${index} (attempt ${attempts + 1}/${MAX_RETRIES})...`);
         
         // Call the transcribe-segment API with timeout
+        // Increase timeout for each retry attempt
+        const timeoutDuration = 20000 + (attempts * 5000); // 20s base + 5s per attempt
         const response = await fetchWithTimeout(
           '/api/transcribe-segment',
           {
@@ -327,10 +366,12 @@ export default function EnhancedTranscriber({
               blobUrl,
               segmentId: index,
               model,
-              attempt: attempts + 1
+              attempt: attempts + 1,
+              // Include timestamp to prevent caching
+              timestamp: Date.now()
             })
           },
-          45000 // 45 second timeout for fetch
+          timeoutDuration
         );
         
         // Handle response errors
@@ -345,8 +386,14 @@ export default function EnhancedTranscriber({
           throw new Error(errorMessage);
         }
         
-        // Parse result
-        const result = await response.json();
+        // Parse result with timeout
+        let result;
+        try {
+          const responseText = await response.text();
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          throw new Error(`Failed to parse API response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        }
         
         if (result.error) {
           throw new Error(result.error);
@@ -366,7 +413,7 @@ export default function EnhancedTranscriber({
         lastError = error;
         attempts++;
         
-        // Only retry on certain errors that might be temporary
+        // Expanded list of retryable errors
         const errorMsg = error instanceof Error ? error.message : String(error);
         const isRetryable = 
           errorMsg.includes('timeout') || 
@@ -374,8 +421,17 @@ export default function EnhancedTranscriber({
           errorMsg.includes('aborted') ||
           errorMsg.includes('failed to fetch') ||
           errorMsg.includes('rate limit') ||
+          errorMsg.includes('ECONNRESET') ||
+          errorMsg.includes('ETIMEDOUT') ||
+          errorMsg.includes('Blob unavailable') ||
+          errorMsg.includes('parse') ||
           (error instanceof TypeError) ||
-          (error instanceof DOMException);
+          (error instanceof DOMException) ||
+          (error instanceof SyntaxError) || // JSON parse errors
+          // HTTP status codes that are worth retrying
+          errorMsg.includes('429') || // Too Many Requests
+          errorMsg.includes('503') || // Service Unavailable
+          errorMsg.includes('504'); // Gateway Timeout
         
         // Update status
         updateChunkStatus(index, { 
@@ -390,9 +446,12 @@ export default function EnhancedTranscriber({
           throw new Error(`Failed to transcribe segment ${index} after ${attempts} attempts: ${errorMsg}`);
         }
         
+        // Calculate backoff delay with exponential backoff and jitter
+        const backoffDelay = getBackoffDelay(attempts);
+        
         // Wait before retrying
-        console.log(`Retry attempt ${attempts}/${MAX_RETRIES} for segment ${index}. Waiting ${RETRY_DELAY/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        console.log(`Retry attempt ${attempts}/${MAX_RETRIES} for segment ${index}. Waiting ${backoffDelay/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     }
     

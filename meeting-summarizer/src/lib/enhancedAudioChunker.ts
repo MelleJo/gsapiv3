@@ -6,9 +6,9 @@
  */
 
 // Recommended chunk size for reliable processing
-export const RECOMMENDED_CHUNK_DURATION = 120; // seconds (2 minutes per chunk)
-export const MAX_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB max size per chunk
-export const MAX_CONCURRENT_UPLOADS = 3; // Maximum concurrent chunk uploads
+export const RECOMMENDED_CHUNK_DURATION = 60; // seconds (1 minute per chunk) - reduced from 2 minutes
+export const MAX_CHUNK_SIZE = 2.5 * 1024 * 1024; // 2.5MB max size per chunk - reduced from 5MB
+export const MAX_CONCURRENT_UPLOADS = 2; // Maximum concurrent chunk uploads - reduced from 3 for better reliability
 
 // Chunk status tracking
 export interface ChunkStatus {
