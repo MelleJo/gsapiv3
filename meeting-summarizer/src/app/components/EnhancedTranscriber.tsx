@@ -8,7 +8,8 @@ import {
   joinTranscriptions,
   formatBytes, 
   ChunkStatus,
-  MAX_CONCURRENT_UPLOADS
+  MAX_CONCURRENT_UPLOADS,
+  MAX_CLIENT_TIMEOUT
 } from '@/lib/enhancedAudioChunker';
 
 interface EnhancedTranscriberProps {
@@ -357,19 +358,18 @@ export default function EnhancedTranscriber({
 
   // Transcribe a single chunk with advanced retry logic and exponential backoff
     const transcribeChunk = async (blobUrl: string, index: number): Promise<string> => {
-      const MAX_RETRIES = 3; // Adjusted for Fluid Compute which has better reliability
-      const BASE_RETRY_DELAY = 5000; // 5 seconds base delay - longer to allow Fluid Compute to work
-      const MAX_RETRY_DELAY = 30000; // Maximum delay cap (30 seconds)
+      const MAX_RETRIES = 2; // Reduced because we're using much longer timeouts
+      const BASE_RETRY_DELAY = 30000; // 30 seconds base delay - much longer for Fluid Compute
+      const MAX_RETRY_DELAY = 90000; // 90 seconds max delay between retries
       let attempts = 0;
       let lastError: any = null;
       
       // Update initial status
       updateChunkStatus(index, { status: 'transcribing', progress: 0, retries: attempts });
       
-      // Function to add timeout to fetch with more robust error handling
-      // Using higher timeout values for Fluid Compute
-      const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 120000) => {
-        console.log(`Starting transcription request for chunk ${index} with ${timeout/1000}s timeout`);
+      // Function to add timeout to fetch with much longer timeouts for Fluid Compute
+      const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = MAX_CLIENT_TIMEOUT) => {
+        console.log(`Starting transcription request for chunk ${index} with ${Math.round(timeout/1000)}s timeout (Fluid Compute)`);
         const controller = new AbortController();
         const id = setTimeout(() => {
           controller.abort();

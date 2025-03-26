@@ -4,7 +4,7 @@ import openai from '@/lib/openai';
 import { formatBytes, OPENAI_MAX_SIZE_LIMIT } from '@/lib/enhancedAudioChunker';
 
 export const runtime = 'edge';
-export const maxDuration = 600; // 10 minutes (600 seconds) with Fluid Compute enabled
+export const maxDuration = 720; // 12 minutes (720 seconds) - maximum for Fluid Compute
 
 
 // Enhanced timeout wrapper with retry capability
@@ -242,11 +242,11 @@ export async function POST(request: Request) {
     console.log(`Transcribing segment ${segmentId} with model ${modelId}`);
     
     // Determine timeout based on file size (larger files need more time)
-    // With Fluid Compute, we can use much longer timeouts
+    // Use maximum Fluid Compute durations
     const fileSize = fileObject.size;
     const transcriptionTimeout = Math.min(
-      300000, // Cap at 300 seconds (5 minutes) max with Fluid Compute
-      30000 + (fileSize / (1024 * 1024)) * 1500 // 30s base + 1.5s per MB
+      700000, // Cap at 700 seconds (11.7 minutes) - near max 720s with buffer
+      60000 + (fileSize / (1024 * 1024)) * 3000 // 60s base + 3s per MB (much longer)
     );
     
     console.log(`Using transcription timeout of ${Math.round(transcriptionTimeout/1000)}s for ${formatBytes(fileSize)} file`);

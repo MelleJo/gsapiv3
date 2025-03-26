@@ -5,14 +5,15 @@
  * This approach splits audio directly in the browser for improved reliability
  */
 
-// OpenAI API has a hard 20MB limit, so we must stay under that
+// Constants optimized for maximum Fluid Compute timeouts
 export const OPENAI_MAX_SIZE_LIMIT = 19 * 1024 * 1024; // 19MB to stay safely under OpenAI's 20MB limit
-export const RECOMMENDED_CHUNK_DURATION = 900; // seconds (15 minutes per chunk) - optimized for Fluid Compute
+export const RECOMMENDED_CHUNK_DURATION = 480; // seconds (8 minutes) to safely fit within the 720s function limit
 export const MAX_CHUNK_SIZE = OPENAI_MAX_SIZE_LIMIT; // Never exceed OpenAI's limit
 export const TARGET_WAV_SIZE = 15 * 1024 * 1024; // Target 15MB WAV files to allow some room for overhead
 export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
-export const MAX_CONCURRENT_UPLOADS = 2; // Can process two chunks at a time with Fluid Compute
+export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time to maximize resources for each chunk
 export const DEFAULT_SAMPLE_RATE = 16000; // 16kHz is sufficient for speech recognition and reduces file size
+export const MAX_CLIENT_TIMEOUT = 600 * 1000; // 10 minutes in milliseconds, for client-side timeouts
 
 // Chunk status tracking
 export interface ChunkStatus {
