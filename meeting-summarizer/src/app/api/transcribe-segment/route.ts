@@ -89,6 +89,7 @@ const withTimeoutAndRetry = async <T>(
 /**
  * API endpoint for transcribing a single audio segment
  * Enhanced with better timeout handling and retries
+ * Also supports direct transcription from client-provided blobs
  */
 export async function POST(request: Request) {
   try {
@@ -110,68 +111,140 @@ export async function POST(request: Request) {
     const segmentId = body.segmentId ?? 0;
     const modelId = body.model || 'whisper-1';
     const attempt = body.attempt || 1;
+    const directBlob = body.directBlob; // Optional: For direct transcription without blob storage
     
     console.log(`Processing segment ${segmentId}, attempt ${attempt}`);
     
-    // Validate inputs
-    if (!blobUrl) {
+    // Check for direct blob first (this is the new path for direct transcription)
+    if (directBlob) {
+      // This would be the base64 data from client directly
+      console.log(`Received direct blob for segment ${segmentId}`);
+      // We'll handle this later in the code
+    } else if (!blobUrl) {
+      // If no directBlob and no blobUrl, return error
       return NextResponse.json(
-        { error: 'No blob URL provided for the segment', segmentId },
+        { error: 'No audio data provided for the segment (missing blobUrl and directBlob)', segmentId },
         { status: 400 }
       );
     }
-
-    // Add cache-busting parameter to URL
-    const blobUrlWithTimestamp = new URL(blobUrl);
-    blobUrlWithTimestamp.searchParams.append('t', Date.now().toString());
     
-    // Fetch the audio segment from blob storage with advanced timeout and retry
-    console.log(`Fetching segment ${segmentId} from blob URL`);
-    const audioResponse = await withTimeoutAndRetry(
-      async () => {
-        // First do a HEAD request to check if blob is available
-        const headResponse = await fetch(blobUrlWithTimestamp.toString(), { 
-          method: 'HEAD',
-          // No need to pass signal - withTimeoutAndRetry will handle timeout
-        });
+    // Get the audio data - either from blob storage or directly provided
+    let fileObject: File;
+    
+    if (directBlob) {
+      // Direct transcription path - no blob storage involved
+      try {
+        // We expect directBlob to be a base64 string
+        console.log(`Processing direct blob for segment ${segmentId}`);
         
-        if (!headResponse.ok) {
-          throw new Error(`Blob not accessible: status ${headResponse.status}`);
+        // First check if the data is a reasonable size
+        const base64Length = directBlob.length;
+        const estimatedByteSize = (base64Length * 3) / 4; // Rough estimate of decoded size
+        
+        console.log(`Direct blob base64 length: ${base64Length}, estimated size: ${formatBytes(estimatedByteSize)}`);
+        
+        if (estimatedByteSize > 20 * 1024 * 1024) {
+          throw new Error(`Direct blob is too large (estimated ${formatBytes(estimatedByteSize)}). Maximum size is 20MB.`);
         }
         
-        // Then fetch the actual blob
-        return fetch(blobUrlWithTimestamp.toString());
-      },
-      { 
-        timeoutMs: 20000, // 20 second timeout for fetch
-        retries: 2, // Try up to 3 times total
-        retryDelayMs: 2000, // Start with 2 second delay
-        operationName: `fetching segment ${segmentId}` 
+        try {
+          // Convert base64 to binary
+          const binaryString = atob(directBlob);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          // Create blob from binary data
+          const audioBlob = new Blob([bytes.buffer], { type: 'audio/mpeg' });
+          console.log(`Converted base64 to blob: ${formatBytes(audioBlob.size)}`);
+          
+          // Create File object for OpenAI API
+          fileObject = new File([audioBlob], `direct_segment_${segmentId}_${Date.now()}.mp3`, { 
+            type: 'audio/mpeg',
+            lastModified: Date.now()
+          });
+        } catch (base64Error) {
+          console.error(`Error decoding base64 data:`, base64Error);
+          throw new Error(`Invalid base64 data for direct transcription: ${base64Error instanceof Error ? base64Error.message : String(base64Error)}`);
+        }
+      } catch (directBlobError) {
+        console.error(`Error processing direct blob for segment ${segmentId}:`, directBlobError);
+        return NextResponse.json(
+          { 
+            error: `Invalid direct blob data: ${directBlobError instanceof Error ? directBlobError.message : String(directBlobError)}`,
+            segmentId 
+          },
+          { status: 400 }
+        );
       }
-    );
-    
-    // Get blob from response
-    const segmentBlob = await audioResponse.blob();
-    console.log(`Segment ${segmentId} fetched: ${formatBytes(segmentBlob.size)}`);
-    
-    // Validate segment size - reject if too large
-    if (segmentBlob.size > 20 * 1024 * 1024) { // 20MB max for whisper API
-      throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is 20MB.`);
+    } else {
+      // Regular blob storage path
+      try {
+        // Add cache-busting parameter to URL
+        const blobUrlWithTimestamp = new URL(blobUrl);
+        blobUrlWithTimestamp.searchParams.append('t', Date.now().toString());
+        
+        // Fetch the audio segment from blob storage with advanced timeout and retry
+        console.log(`Fetching segment ${segmentId} from blob URL`);
+        const audioResponse = await withTimeoutAndRetry(
+          async () => {
+            // First do a HEAD request to check if blob is available
+            const headResponse = await fetch(blobUrlWithTimestamp.toString(), { 
+              method: 'HEAD',
+              // No need to pass signal - withTimeoutAndRetry will handle timeout
+            });
+            
+            if (!headResponse.ok) {
+              throw new Error(`Blob not accessible: status ${headResponse.status}`);
+            }
+            
+            // Then fetch the actual blob
+            return fetch(blobUrlWithTimestamp.toString());
+          },
+          { 
+            timeoutMs: 20000, // 20 second timeout for fetch
+            retries: 2, // Try up to 3 times total
+            retryDelayMs: 2000, // Start with 2 second delay
+            operationName: `fetching segment ${segmentId}` 
+          }
+        );
+        
+        // Get blob from response
+        const segmentBlob = await audioResponse.blob();
+        console.log(`Segment ${segmentId} fetched: ${formatBytes(segmentBlob.size)}`);
+        
+        // Validate segment size - reject if too large
+        if (segmentBlob.size > 20 * 1024 * 1024) { // 20MB max for whisper API
+          throw new Error(`Segment ${segmentId} is too large (${formatBytes(segmentBlob.size)}). Maximum size is 20MB.`);
+        }
+        
+        // Create a File object for OpenAI API
+        fileObject = new File([segmentBlob], `segment_${segmentId}_${Date.now()}.mp3`, { 
+          type: 'audio/mpeg',
+          lastModified: Date.now()
+        });
+      } catch (blobFetchError) {
+        console.error(`Failed to fetch blob for segment ${segmentId}:`, blobFetchError);
+        return NextResponse.json(
+          { 
+            error: `Failed to fetch audio data: ${blobFetchError instanceof Error ? blobFetchError.message : String(blobFetchError)}`,
+            segmentId,
+            retryable: true 
+          },
+          { status: 502 }
+        );
+      }
     }
-    
-    // Create a File object for OpenAI API
-    const fileObject = new File([segmentBlob], `segment_${segmentId}_${Date.now()}.mp3`, { 
-      type: 'audio/mpeg',
-      lastModified: Date.now()
-    });
     
     // Process with OpenAI Whisper with advanced timeout and retry
     console.log(`Transcribing segment ${segmentId} with model ${modelId}`);
     
     // Determine timeout based on file size (larger files need more time)
+    const fileSize = fileObject.size;
     const transcriptionTimeout = Math.min(
       45000, // Cap at 45 seconds max
-      15000 + (segmentBlob.size / (1024 * 1024)) * 1000 // 15s + 1s per MB
+      15000 + (fileSize / (1024 * 1024)) * 1000 // 15s + 1s per MB
     );
     
     const transcription = await withTimeoutAndRetry(

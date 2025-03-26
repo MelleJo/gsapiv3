@@ -141,102 +141,179 @@ export default function EnhancedTranscriber({
     }
   };
 
-  // Process chunks in stages (upload, then transcribe)
+  // Process chunks in stages (upload, then transcribe) - sequential approach
   const processChunksInStages = async (audioChunks: Blob[], fileName: string): Promise<string[]> => {
-    // First upload all chunks
-    setCurrentStage('uploading');
-    
     try {
-      // Upload chunks
-      const uploadedChunks = await processChunksWithProgress(
-        audioChunks,
-        uploadChunk(fileName),
-        (progress, current, total) => {
-          if (onProgress) onProgress(10 + (progress * 0.3), `Uploading segments (${current}/${total})...`);
-          updateChunkProgress('uploading', progress);
-        },
-        MAX_CONCURRENT_UPLOADS
-      );
+      // Array to store all transcriptions - likely just 1-3 large chunks
+      const transcriptions: string[] = [];
       
-      // Then transcribe all chunks with improved fault tolerance
-      setCurrentStage('transcribing');
-      
-      // Custom implementation of processing for URL strings instead of Blobs
-      const transcriptions: string[] = Array(uploadedChunks.length).fill('');
-      let completedTranscriptions = 0;
-      let failedTranscriptions = 0;
-      
-      // Process URLs in batches to control concurrency
-      const maxConcurrentTranscriptions = 2; // Lower concurrency for transcription to avoid rate limits
-      
-      for (let i = 0; i < uploadedChunks.length; i += maxConcurrentTranscriptions) {
-        const batch = uploadedChunks.slice(i, i + maxConcurrentTranscriptions);
-        const batchPromises = batch.map(async (blobUrl, batchIndex) => {
-          const chunkIndex = i + batchIndex;
-          try {
-            const result = await transcribeChunk(blobUrl, chunkIndex);
-            completedTranscriptions++;
-            
-            // Update progress
-            const progress = Math.round(((completedTranscriptions + failedTranscriptions) / uploadedChunks.length) * 100);
-            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions + failedTranscriptions}/${uploadedChunks.length})...`);
-            updateChunkProgress('transcribing', progress);
-            
-            return { index: chunkIndex, result, success: true };
-          } catch (error) {
-            // Mark this chunk as failed but don't fail the whole process
-            failedTranscriptions++;
-            console.error(`Error transcribing chunk ${chunkIndex}:`, error);
-            
-            // Update progress even for failed chunks
-            const progress = Math.round(((completedTranscriptions + failedTranscriptions) / uploadedChunks.length) * 100);
-            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions + failedTranscriptions}/${uploadedChunks.length})...`);
-            
-            return { 
-              index: chunkIndex, 
-              result: `[Transcription failed for segment ${chunkIndex + 1}]`, 
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            };
+      // Process each chunk one at a time (no parallel processing)
+      for (let i = 0; i < audioChunks.length; i++) {
+        // First, upload the current chunk
+        setCurrentStage('uploading');
+        updateChunkStatus(i, { status: 'uploading', progress: 0 });
+        
+        if (onProgress) {
+          const uploadMessage = audioChunks.length > 1 
+            ? `Uploading segment ${i+1}/${audioChunks.length}...` 
+            : `Uploading audio file...`;
+          onProgress(10, uploadMessage);
+        }
+        
+        // Upload the chunk
+        console.log(`Uploading chunk ${i+1}/${audioChunks.length} (${formatBytes(audioChunks[i].size)})...`);
+        let blobUrl: string;
+        
+        try {
+          blobUrl = await uploadChunk(fileName)(audioChunks[i], i);
+          
+          // Short delay after upload
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          if (onProgress) {
+            onProgress(40, audioChunks.length > 1 
+              ? `Segment ${i+1}/${audioChunks.length} uploaded, preparing transcription...` 
+              : `Audio uploaded, preparing transcription...`);
           }
-        });
-        
-        // Wait for all promises in this batch to settle
-        const batchResults = await Promise.allSettled(batchPromises);
-        
-        // Process results
-        for (const result of batchResults) {
-          if (result.status === 'fulfilled') {
-            const { index, result: transcription, success } = result.value;
-            transcriptions[index] = transcription;
+        } catch (uploadError) {
+          console.error(`Failed to upload chunk ${i+1}/${audioChunks.length}:`, uploadError);
+          
+          // Try direct transcription without blob storage if upload fails
+          if (audioChunks[i].size < 10 * 1024 * 1024) { // Under 10MB for direct transmission
+            console.warn(`Attempting direct transcription without blob storage for chunk ${i+1}...`);
             
-            // Log error but don't fail the entire process
-            if (!success) {
-              console.warn(`Segment ${index + 1} failed but continuing with processing`);
+            try {
+              // Base64 encode the blob for direct API transmission
+              const arrayBuffer = await audioChunks[i].arrayBuffer();
+              const base64data = btoa(
+                new Uint8Array(arrayBuffer)
+                  .reduce((data, byte) => data + String.fromCharCode(byte), '')
+              );
+              
+              // Use a placeholder URL to identify this is a direct blob transmission
+              blobUrl = `direct-blob://${i}`;
+              
+              // Send the blob directly to the API endpoint with the request
+              const directResponse = await fetch('/api/transcribe-segment', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  directBlob: base64data,
+                  segmentId: i,
+                  model,
+                  attempt: 1
+                })
+              });
+              
+              if (!directResponse.ok) {
+                throw new Error(`Direct transcription API returned status ${directResponse.status}`);
+              }
+              
+              const directResult = await directResponse.json();
+              
+              // If successful, we can skip the regular transcription step
+              if (directResult.success && directResult.transcription) {
+                // Add to results
+                transcriptions.push(directResult.transcription);
+                
+                // Mark as completed in UI
+                updateChunkStatus(i, { 
+                  status: 'completed', 
+                  progress: 100,
+                  transcription: directResult.transcription
+                });
+                
+                if (onProgress) {
+                  const progressPercent = Math.round(((i + 1) / audioChunks.length) * 100);
+                  onProgress(40 + (progressPercent * 0.55), 
+                    audioChunks.length > 1 
+                      ? `Transcribed segment ${i+1}/${audioChunks.length} (direct)` 
+                      : `Transcription completed!`);
+                }
+                
+                // Continue to next chunk
+                continue;
+              }
+              
+              // If we get here, the direct API call succeeded but didn't return a transcription
+              // Fall back to creating a temporary URL
+              console.warn(`Direct transcription API call succeeded but didn't return a transcription. Creating temp URL.`);
+              blobUrl = URL.createObjectURL(audioChunks[i]);
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000); // Revoke after 1 minute
+            } catch (directError) {
+              console.error(`Direct transcription failed for chunk ${i+1}:`, directError);
+              
+              // Fall back to creating a temporary URL
+              console.warn(`Falling back to temporary URL for chunk ${i+1}...`);
+              blobUrl = URL.createObjectURL(audioChunks[i]);
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000); // Revoke after 1 minute
             }
           } else {
-            // This should rarely happen since we're already catching errors in the map function
-            console.error(`Unexpected promise rejection for batch:`, result.reason);
-            failedTranscriptions++;
+            throw new Error(`Failed to upload segment ${i+1} and it's too large (${formatBytes(audioChunks[i].size)}) for direct transcription`);
           }
         }
         
-        // Short delay between batches to avoid rate limiting
-        if (i + maxConcurrentTranscriptions < uploadedChunks.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+        // Now transcribe the uploaded chunk
+        setCurrentStage('transcribing');
+        updateChunkStatus(i, { status: 'transcribing', progress: 0 });
+        
+        if (onProgress) {
+          const transcriptionMessage = audioChunks.length > 1 
+            ? `Transcribing segment ${i+1}/${audioChunks.length}...` 
+            : `Transcribing audio...`;
+          onProgress(60, transcriptionMessage);
+        }
+        
+        console.log(`Transcribing chunk ${i+1}/${audioChunks.length}...`);
+        
+        let transcriptionResult: string;
+        try {
+          // Transcribe the chunk with retries
+          transcriptionResult = await transcribeChunk(blobUrl, i);
+          
+          // Mark as completed in UI
+          updateChunkStatus(i, { 
+            status: 'completed', 
+            progress: 100,
+            transcription: transcriptionResult
+          });
+          
+          // Add to results
+          transcriptions.push(transcriptionResult);
+          
+          if (onProgress) {
+            const progressPercent = Math.round(((i + 1) / audioChunks.length) * 100);
+            onProgress(40 + (progressPercent * 0.55), 
+              audioChunks.length > 1 
+                ? `Transcribed segment ${i+1}/${audioChunks.length}` 
+                : `Transcription completed!`);
+          }
+        } catch (transcriptError) {
+          console.error(`Failed to transcribe chunk ${i+1}/${audioChunks.length}:`, transcriptError);
+          
+          // Mark as error in UI
+          updateChunkStatus(i, { 
+            status: 'error', 
+            progress: 100,
+            error: transcriptError instanceof Error ? transcriptError.message : String(transcriptError)
+          });
+          
+          // Add a placeholder for this chunk
+          transcriptions.push(`[Transcription failed for part ${i+1} of ${audioChunks.length}]`);
+          
+          // Continue with next chunk - don't completely fail if one chunk fails
+          continue;
+        }
+        
+        // Short delay between chunks
+        if (i < audioChunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       
-      // Check if we have any successes
-      if (completedTranscriptions === 0 && failedTranscriptions > 0) {
-        throw new Error(`All ${failedTranscriptions} segments failed transcription. Please try again or use a different file.`);
-      }
-      
-      // Report partial success
-      if (failedTranscriptions > 0) {
-        console.warn(`Completed transcription with ${completedTranscriptions} successful segments and ${failedTranscriptions} failed segments`);
-      }
-      
+      // Return the array of transcriptions (one per chunk)
       return transcriptions;
     } catch (error) {
       console.error('Error processing chunks:', error);

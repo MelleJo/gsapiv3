@@ -6,9 +6,9 @@
  */
 
 // Recommended chunk size for reliable processing
-export const RECOMMENDED_CHUNK_DURATION = 60; // seconds (1 minute per chunk) - reduced from 2 minutes
-export const MAX_CHUNK_SIZE = 2.5 * 1024 * 1024; // 2.5MB max size per chunk - reduced from 5MB
-export const MAX_CONCURRENT_UPLOADS = 2; // Maximum concurrent chunk uploads - reduced from 3 for better reliability
+export const RECOMMENDED_CHUNK_DURATION = 900; // seconds (15 minutes per chunk) - increased for fewer, larger chunks
+export const MAX_CHUNK_SIZE = 19 * 1024 * 1024; // 19MB max size per chunk - just under OpenAI's 25MB limit, allowing some overhead
+export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time for maximum reliability
 
 // Chunk status tracking
 export interface ChunkStatus {
