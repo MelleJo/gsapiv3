@@ -321,7 +321,6 @@ async function fallbackBinaryChunking(audioBlob: Blob): Promise<Blob[]> {
       console.log(`Created binary chunk ${i+1}/${numChunks}: ${formatBytes(chunk.size)}`);
     }
     
-.
     return chunks;
   } catch (error) {
     console.error("Fallback audio decode failed, using pure binary chunking:", error);

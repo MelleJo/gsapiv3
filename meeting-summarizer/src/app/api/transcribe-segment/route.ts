@@ -125,6 +125,7 @@ export async function POST(request: Request) {
       // If no directBlob and no blobUrl, return error
       return NextResponse.json(
         { error: 'No audio data provided for the segment (missing blobUrl and directBlob)', segmentId },
+ 
         { status: 400 }
       );
     }
@@ -193,7 +194,7 @@ export async function POST(request: Request) {
             // First do a HEAD request to check if blob is available
             const headResponse = await fetch(blobUrlWithTimestamp.toString(), { 
               method: 'HEAD',
-              // No need to pass signal - withTimeoutAndRetry will handle timeout
+              signal: AbortSignal.timeout(700000) // 700 second timeout for the head check
             });
             
             if (!headResponse.ok) {
@@ -205,8 +206,8 @@ export async function POST(request: Request) {
           },
           { 
             timeoutMs: 20000, // 20 second timeout for fetch
-            retries: 2, // Try up to 3 times total
-            retryDelayMs: 2000, // Start with 2 second delay
+            retries: 2,
+            retryDelayMs: 2000,
             operationName: `fetching segment ${segmentId}` 
           }
         );
