@@ -4,7 +4,8 @@ import openai from '@/lib/openai';
 import { formatBytes } from '@/lib/enhancedAudioChunker';
 
 export const runtime = 'edge';
-export const maxDuration = 60; // 60 seconds per segment for better reliability
+export const maxDuration = 600; // 10 minutes (600 seconds) with Fluid Compute enabled
+
 
 // Enhanced timeout wrapper with retry capability
 const withTimeoutAndRetry = async <T>(
@@ -241,11 +242,14 @@ export async function POST(request: Request) {
     console.log(`Transcribing segment ${segmentId} with model ${modelId}`);
     
     // Determine timeout based on file size (larger files need more time)
+    // With Fluid Compute, we can use much longer timeouts
     const fileSize = fileObject.size;
     const transcriptionTimeout = Math.min(
-      45000, // Cap at 45 seconds max
-      15000 + (fileSize / (1024 * 1024)) * 1000 // 15s + 1s per MB
+      300000, // Cap at 300 seconds (5 minutes) max with Fluid Compute
+      30000 + (fileSize / (1024 * 1024)) * 1500 // 30s base + 1.5s per MB
     );
+    
+    console.log(`Using transcription timeout of ${Math.round(transcriptionTimeout/1000)}s for ${formatBytes(fileSize)} file`);
     
     const transcription = await withTimeoutAndRetry(
       async () => {

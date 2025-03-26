@@ -356,23 +356,25 @@ export default function EnhancedTranscriber({
   };
 
   // Transcribe a single chunk with advanced retry logic and exponential backoff
-  const transcribeChunk = async (blobUrl: string, index: number): Promise<string> => {
-    const MAX_RETRIES = 5; // Increased from 3 to 5
-    const BASE_RETRY_DELAY = 2000; // 2 seconds base delay
-    const MAX_RETRY_DELAY = 15000; // Maximum delay cap (15 seconds)
-    let attempts = 0;
-    let lastError: any = null;
-    
-    // Update initial status
-    updateChunkStatus(index, { status: 'transcribing', progress: 0, retries: attempts });
-    
-    // Function to add timeout to fetch with more robust error handling
-    const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 25000) => {
-      const controller = new AbortController();
-      const id = setTimeout(() => {
-        controller.abort();
-        console.warn(`Request timeout for segment ${index} after ${timeout}ms`);
-      }, timeout);
+    const transcribeChunk = async (blobUrl: string, index: number): Promise<string> => {
+      const MAX_RETRIES = 3; // Adjusted for Fluid Compute which has better reliability
+      const BASE_RETRY_DELAY = 5000; // 5 seconds base delay - longer to allow Fluid Compute to work
+      const MAX_RETRY_DELAY = 30000; // Maximum delay cap (30 seconds)
+      let attempts = 0;
+      let lastError: any = null;
+      
+      // Update initial status
+      updateChunkStatus(index, { status: 'transcribing', progress: 0, retries: attempts });
+      
+      // Function to add timeout to fetch with more robust error handling
+      // Using higher timeout values for Fluid Compute
+      const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = 120000) => {
+        console.log(`Starting transcription request for chunk ${index} with ${timeout/1000}s timeout`);
+        const controller = new AbortController();
+        const id = setTimeout(() => {
+          controller.abort();
+          console.warn(`Request timeout for segment ${index} after ${timeout}ms`);
+        }, timeout);
       
       try {
         // For blob URLs, first check if they're accessible

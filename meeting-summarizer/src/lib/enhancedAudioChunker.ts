@@ -5,10 +5,11 @@
  * This approach splits audio directly in the browser for improved reliability
  */
 
-// Recommended chunk size for reliable processing
-export const RECOMMENDED_CHUNK_DURATION = 900; // seconds (15 minutes per chunk) - increased for fewer, larger chunks
-export const MAX_CHUNK_SIZE = 19 * 1024 * 1024; // 19MB max size per chunk - just under OpenAI's 25MB limit, allowing some overhead
-export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time for maximum reliability
+// Recommended chunk size for reliable processing with Fluid Compute
+export const RECOMMENDED_CHUNK_DURATION = 1500; // seconds (25 minutes per chunk) - optimized for Fluid Compute
+export const MAX_CHUNK_SIZE = 24 * 1024 * 1024; // 24MB max size per chunk - very close to OpenAI's 25MB limit since we have better error handling
+export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
+export const MAX_CONCURRENT_UPLOADS = 2; // Can process two chunks at a time with Fluid Compute
 
 // Chunk status tracking
 export interface ChunkStatus {
@@ -29,10 +30,21 @@ export async function createAudioChunks(
   audioFile: File,
   targetDuration: number = RECOMMENDED_CHUNK_DURATION
 ): Promise<Blob[]> {
-  // For small files, return as-is
-  if (audioFile.size <= MAX_CHUNK_SIZE) {
-    console.log(`Audio file size (${formatBytes(audioFile.size)}) is smaller than threshold. Using as-is.`);
+  // For very small files, return as-is, but ensure medium-sized files are chunked
+  if (audioFile.size <= MIN_CHUNK_SIZE) {
+    console.log(`Audio file size (${formatBytes(audioFile.size)}) is smaller than minimum chunk threshold. Using as-is.`);
     return [audioFile];
+  }
+  
+  // For medium-sized files, still chunk but not too aggressively
+  if (audioFile.size <= MAX_CHUNK_SIZE) {
+    console.log(`Medium-sized file detected (${formatBytes(audioFile.size)}). Using moderate chunking.`);
+    // Estimate duration based on file size (roughly 1MB per minute for MP3)
+    const estimatedDurationSeconds = audioFile.size / (1024 * 1024) * 60;
+    // Create 2-3 chunks for medium-sized files
+    const mediumTargetDuration = Math.max(300, estimatedDurationSeconds / 3);
+    targetDuration = Math.min(targetDuration, mediumTargetDuration);
+    console.log(`Adjusted target duration to ${Math.round(targetDuration)}s based on estimated audio length of ${Math.round(estimatedDurationSeconds)}s`);
   }
 
   console.log(`Splitting audio file of size ${formatBytes(audioFile.size)} into chunks of ~${targetDuration} seconds each`);
