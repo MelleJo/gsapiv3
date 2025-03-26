@@ -160,15 +160,51 @@ export default function EnhancedTranscriber({
       
       // Then transcribe all chunks
       setCurrentStage('transcribing');
-      const transcriptions = await processChunksWithProgress(
-        uploadedChunks,
-        transcribeChunk,
-        (progress, current, total) => {
-          if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${current}/${total})...`);
-          updateChunkProgress('transcribing', progress);
-        },
-        2 // Lower concurrency for transcription to avoid rate limits
-      );
+      
+      // Custom implementation of processing for URL strings instead of Blobs
+      const transcriptions: string[] = [];
+      let completedTranscriptions = 0;
+      
+      // Process URLs in batches to control concurrency
+      const maxConcurrentTranscriptions = 2; // Lower concurrency for transcription to avoid rate limits
+      
+      for (let i = 0; i < uploadedChunks.length; i += maxConcurrentTranscriptions) {
+        const batch = uploadedChunks.slice(i, i + maxConcurrentTranscriptions);
+        const batchPromises = batch.map(async (blobUrl, batchIndex) => {
+          const chunkIndex = i + batchIndex;
+          try {
+            const result = await transcribeChunk(blobUrl, chunkIndex);
+            completedTranscriptions++;
+            
+            // Update progress
+            const progress = Math.round((completedTranscriptions / uploadedChunks.length) * 100);
+            if (onProgress) onProgress(40 + (progress * 0.55), `Transcribing segments (${completedTranscriptions}/${uploadedChunks.length})...`);
+            updateChunkProgress('transcribing', progress);
+            
+            return { index: chunkIndex, result };
+          } catch (error) {
+            console.error(`Error transcribing chunk ${chunkIndex}:`, error);
+            throw { index: chunkIndex, error };
+          }
+        });
+        
+        // Wait for all promises in this batch to settle
+        const batchResults = await Promise.allSettled(batchPromises);
+        
+        // Process results
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            transcriptions[result.value.index] = result.value.result;
+          } else {
+            throw new Error(`Failed to transcribe chunk ${result.reason.index}: ${result.reason.error}`);
+          }
+        }
+        
+        // Short delay between batches to avoid rate limiting
+        if (i + maxConcurrentTranscriptions < uploadedChunks.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       
       return transcriptions;
     } catch (error) {
