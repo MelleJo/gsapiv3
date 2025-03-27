@@ -30,7 +30,23 @@ export async function POST(request: Request) {
                           chatModels[0];
 
     // Use the provided prompt if available, otherwise fallback to default
-    const meetingSummaryPrompt = prompt || `Maak een gedetailleerde, feitelijke samenvatting van deze vergadering. Gebruik actieve taal, niet passief. Identificeer deelnemers en hun standpunten. Vermeld beslissingen en actiepunten met verantwoordelijken. Structureer met duidelijke secties en gebruik opsommingstekens waar nodig. Wees gedetailleerd - langere transcripties verdienen uitgebreidere samenvattingen. Vermijd hallucinations. Vermeld belangrijke cijfers en voorbeelden. Wees objectief over tegenstrijdige standpunten. Organiseer onderwerpen chronologisch. Sluit af met "Genomen beslissingen" en "Actiepunten" secties.`;
+    const meetingSummaryPrompt = prompt || `Je bent een expert in het samenvatten van vergaderingen. Maak een gedetailleerde en inzichtelijke samenvatting van de volgende transcriptie.
+
+**Instructies:**
+1.  **Focus op Inhoud:** Concentreer je uitsluitend op de informatie die daadwerkelijk in de transcriptie aanwezig is. **Vermeld NIET expliciet dat standaard vergaderinformatie (zoals datum, tijd, voorzitter, formele besluiten) ontbreekt.** Vat in plaats daarvan de inhoud, de belangrijkste discussiepunten en de flow van het gesprek samen.
+2.  **Synthese en Interpretatie:** Identificeer de kernthema's en onderwerpen die besproken zijn. Leid impliciete overeenkomsten, conclusies of volgende stappen af die door de deelnemers worden genoemd, zelfs als ze niet formeel zijn vastgelegd.
+3.  **Detail en Nuance:** Wees gedetailleerd. Extraheer specifieke voorbeelden, argumenten, cijfers en verschillende standpunten die tijdens de discussie naar voren komen. Ga dieper dan oppervlakkige vermeldingen.
+4.  **Structuur:** Organiseer de samenvatting logisch rond de belangrijkste besproken onderwerpen of thema's. Gebruik duidelijke koppen en opsommingstekens voor leesbaarheid. Een chronologische volgorde is vaak nuttig, maar groepeer gerelateerde punten.
+5.  **Taalgebruik:** Gebruik heldere, actieve taal. Wees objectief bij het weergeven van verschillende meningen.
+6.  **Deelnemers:** Identificeer sprekers en hun bijdragen waar mogelijk.
+7.  **Resultaten:** Sluit af met een duidelijke sectie voor **Belangrijkste Conclusies** (zowel expliciet als impliciet) en **Actiepunten** (indien genoemd, met eventuele verantwoordelijken).
+
+**Vermijd:**
+*   Hallucinaties of informatie die niet in de tekst staat.
+*   Zinnen zoals "Niet vermeld in transcript", "Voorzitter onbekend", etc. Focus op wat er *wel* is.
+*   Overdreven formaliteit als het gesprek informeel was.
+
+Vat nu de volgende transcriptie samen:`;
 
     let summary = '';
     let outputTokenCount = 0;
