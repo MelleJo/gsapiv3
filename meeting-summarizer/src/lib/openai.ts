@@ -9,13 +9,13 @@ if (!apiKey) {
 const openai = new OpenAI({
   apiKey,
   // Using a proxy configuration if it's set in environment variables
-  httpAgent: process.env.HTTPS_PROXY ? new URL(process.env.HTTPS_PROXY) : undefined,
-  
-  // Better networking options
-  timeout: 120000, // 2 minute timeout (Whisper kan tijd nodig hebben voor grote bestanden)
-  maxRetries: 2,   // Retry twice on failures (excluding 429 which has its own retry)
-  
-  // Log more details for debugging in dev
+   httpAgent: process.env.HTTPS_PROXY ? new URL(process.env.HTTPS_PROXY) : undefined,
+
+   // Better networking options
+   timeout: 600000, // 10 minute timeout (Increased for potential socket hang up issues)
+   maxRetries: 2,   // Retry twice on failures (excluding 429 which has its own retry)
+
+   // Log more details for debugging in dev
   dangerouslyAllowBrowser: process.env.NODE_ENV === 'development',
 });
 
