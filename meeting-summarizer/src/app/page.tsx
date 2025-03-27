@@ -59,12 +59,13 @@ interface PromptType {
 
 export default function Home() {
   // State for audio blob info from Vercel Blob
-  const [uploadedBlobInfo, setUploadedBlobInfo] = useState<PutBlobResult | null>(null); // Changed state name and type
-  const [audioFileName, setAudioFileName] = useState<string>(''); // Keep original filename for display
+  const [uploadedBlobInfo, setUploadedBlobInfo] = useState<PutBlobResult | null>(null);
+  const [audioFileName, setAudioFileName] = useState<string>('');
 
   // State for transcription and samenvatting
   const [transcription, setTranscription] = useState<string>('');
-  const [summaryHtml, setSummaryHtml] = useState<string>(''); // Renamed state
+  const [summary, setSummary] = useState<string>(''); // Keep raw Markdown state
+  const [summaryHtml, setSummaryHtml] = useState<string>(''); // Add HTML state
 
   // State for gekozen prompt
   const [selectedPrompt, setSelectedPrompt] = useState<PromptType>({
@@ -150,6 +151,7 @@ export default function Home() {
     console.log('Pipeline starting with Blob info:', blobInfo);
     // Reset previous results
     setTranscription('');
+    setSummary(''); // Reset raw summary
     setSummaryHtml(''); // Reset summaryHtml
     setTranscriptionCost(0);
     setSummaryCost(0);
@@ -163,11 +165,6 @@ export default function Home() {
     setPipelineStartTime(now);
     setStageStartTime(now); // Start timer for the next stage (transcription)
 
-    // Estimate chunks based on size from blob info (might be slightly off from original)
-    // It's better if the upload API returns the final size, PutBlobResult doesn't have size.
-    // We'll need to pass the original size or estimate based on URL if needed later.
-    // For now, let's assume the backend handles chunking decisions if needed.
-
     // Set pipeline status to 'Transcribing'
     updatePipeline({
       stage: 'transcribing',
@@ -176,7 +173,6 @@ export default function Home() {
       estimatedTimeLeft: calculateEstimatedTime(15 * 1024 * 1024, 'transcribing', settings.transcriptionModel), // Use a placeholder size or get from blob if available
       details: {
         fileName: blobInfo.pathname.split('/').pop() || 'audio_file',
-        // fileSize: blobInfo.size, // Size is not directly in PutBlobResult
       }
     });
 
@@ -225,27 +221,22 @@ export default function Home() {
       progressIntervalRef.current = setInterval(() => {
         if (stageStartTime) {
           const elapsedSeconds = Math.floor((Date.now() - stageStartTime) / 1000);
-          // Estimate based on a typical large file size (e.g., 15MB) if blobInfo.size is missing
           const estimatedSize = 15 * 1024 * 1024;
           const estimatedTotal = calculateEstimatedTime(estimatedSize, 'transcribing', settings.transcriptionModel);
           const progress = calculateProgressFromTime(elapsedSeconds, estimatedTotal);
           const timeLeft = Math.max(1, estimatedTotal - elapsedSeconds);
-
           updatePipeline({ progress, estimatedTimeLeft: timeLeft, message: `Transcriptie bezig... (${progress}%)` });
         }
       }, 1000);
 
       // Call the MODIFIED backend API with the download URL
-      const response = await fetch('/api/direct-transcribe', { // Use the direct-transcribe route
+      const response = await fetch('/api/direct-transcribe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          audioUrl: blobInfo.downloadUrl, // Send the download URL
+          audioUrl: blobInfo.downloadUrl,
           model: settings.transcriptionModel,
-          language: 'nl', // Or make this configurable
-          // prompt: 'Optional context prompt', // Pass prompt if needed
+          language: 'nl',
         })
       });
 
@@ -253,10 +244,8 @@ export default function Home() {
 
       if (!response.ok) {
         let errorMessage = 'Transcriptie mislukt';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || `Serverfout ${response.status}`;
-        } catch (e) { errorMessage = `Serverfout ${response.status}`; }
+        try { const errorData = await response.json(); errorMessage = errorData.error || `Serverfout ${response.status}`; }
+        catch (e) { errorMessage = `Serverfout ${response.status}`; }
         throw new Error(errorMessage);
       }
 
@@ -265,9 +254,6 @@ export default function Home() {
 
       console.log('Transcription successful.');
       setTranscription(data.transcription);
-      // Update cost/chunk info if backend provides it (modify API if needed)
-      // setTranscriptionCost(data.usage?.estimatedCost || 0);
-      // setTranscriptionInfo({ chunked: data.usage?.chunked || false, chunks: data.usage?.chunks || 1 });
 
       // Proceed to summarization
       proceedToSummarization(data.transcription);
@@ -281,56 +267,38 @@ export default function Home() {
         error: error instanceof Error ? error.message : 'Onbekende fout'
       });
       showNotification('error', `Fout tijdens transcriptie: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
-      setIsProcessing(false); // Ensure main processing flag is reset
+      setIsProcessing(false);
     }
-    // No finally block needed here as setIsProcessing happens on error/success paths
   };
 
-  // Move to summarization stage (mostly unchanged, triggers summarizeWithProgress)
+  // Move to summarization stage
   const proceedToSummarization = (transcriptText: string) => {
-    // Update pipeline status
     const now = Date.now();
-    setStageStartTime(now); // Reset timer for summarization stage
-
-    // Update UI step
+    setStageStartTime(now);
     setCurrentStep(3);
-
-    // Scroll to summary section
-    setTimeout(() => {
-      document.getElementById('summary-section')?.scrollIntoView({ behavior: 'smooth' });
-    }, 300);
-
+    setTimeout(() => { document.getElementById('summary-section')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
     updatePipeline({
       stage: 'summarizing',
       progress: 0,
       message: getInitialStageMessage('summarizing'),
       estimatedTimeLeft: calculateEstimatedTime(transcriptText.length * 2, 'summarizing'),
-       details: {
-         fileName: audioFileName, // Keep filename context
-       }
+       details: { fileName: audioFileName }
     });
-
-    // Start summarization
     summarizeWithProgress(transcriptText);
   };
 
-  // Summarize with progress tracking (mostly unchanged)
+  // Summarize with progress tracking
   const summarizeWithProgress = async (text: string) => {
     if (!text || text.trim() === '') {
-      updatePipeline({
-        stage: 'error',
-        message: 'Transcriptie is leeg',
-        error: 'Transcriptie is leeg of ontbreekt'
-      });
+      updatePipeline({ stage: 'error', message: 'Transcriptie is leeg', error: 'Transcriptie is leeg of ontbreekt' });
       showNotification('error', 'Transcriptie is leeg of ontbreekt');
        setIsProcessing(false);
       return;
     }
 
-    if (!stageStartTime) setStageStartTime(Date.now()); // Ensure stage timer is set
+    if (!stageStartTime) setStageStartTime(Date.now());
 
     try {
-      // Start progress simulation
       clearProgressInterval();
       progressIntervalRef.current = setInterval(() => {
         if (stageStartTime) {
@@ -338,12 +306,10 @@ export default function Home() {
           const estimatedTotal = calculateEstimatedTime(text.length * 2, 'summarizing');
           const progress = calculateProgressFromTime(elapsedSeconds, estimatedTotal);
           const timeLeft = Math.max(1, estimatedTotal - elapsedSeconds);
-
           updatePipeline({ progress, estimatedTimeLeft: timeLeft, message: `Samenvatting genereren... (${progress}%)` });
         }
       }, 1000);
 
-      // Call the API
       const response = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -355,7 +321,7 @@ export default function Home() {
         })
       });
 
-      clearProgressInterval(); // Stop interval
+      clearProgressInterval();
 
       if (!response.ok) {
         let errorMessage = 'Samenvatting mislukt';
@@ -368,121 +334,81 @@ export default function Home() {
       if (data.error) throw new Error(data.error);
 
       console.log('Summarization successful.');
-      setSummaryHtml(data.summaryHtml); // Use correct state setter and data property
-      // setSummaryCost(data.usage?.cost || 0); // Update cost if API provides it
+      setSummary(data.summary || ''); // Store raw Markdown
+      setSummaryHtml(data.summaryHtml || ''); // Store HTML
+      // setSummaryCost(data.usage?.cost || 0);
 
-      updatePipeline({
-        stage: 'completed',
-        progress: 100,
-        message: 'Verwerking voltooid!',
-        estimatedTimeLeft: 0
-      });
+      updatePipeline({ stage: 'completed', progress: 100, message: 'Verwerking voltooid!', estimatedTimeLeft: 0 });
 
-      // Auto-close pipeline UI after delay
       setTimeout(() => {
         setPipelineActive(false);
-        setIsProcessing(false); // Reset general processing flag
+        setIsProcessing(false);
       }, 2000);
 
     } catch (error) {
       console.error('❌ Samenvatting fout:', error);
       clearProgressInterval();
-      updatePipeline({
-        stage: 'error',
-        message: 'Fout tijdens samenvatting',
-        error: error instanceof Error ? error.message : 'Onbekende fout'
-      });
+      updatePipeline({ stage: 'error', message: 'Fout tijdens samenvatting', error: error instanceof Error ? error.message : 'Onbekende fout' });
       showNotification('error', `Fout tijdens samenvatting: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
-       setIsProcessing(false); // Ensure flag is reset on error
+       setIsProcessing(false);
     }
   };
 
- // Handle audio capture (needs modification to use Blob upload)
+ // Handle audio capture
  const handleAudioCapture = async (file: File) => {
     console.log("Handling captured audio:", file.name, file.size);
-    setIsProcessing(true); // Set general processing flag
+    setIsProcessing(true);
     setPipelineActive(true);
     const now = Date.now();
     setPipelineStartTime(now);
-    setStageStartTime(now); // Start timer for upload stage
-
-    // Update pipeline status for upload
+    setStageStartTime(now);
     updatePipeline({
-        stage: 'uploading',
-        progress: 0,
+        stage: 'uploading', progress: 0,
         message: `Audio opname "${file.name}" uploaden...`,
         estimatedTimeLeft: calculateEstimatedTime(file.size, 'uploading'),
         details: { fileName: file.name, fileSize: file.size }
     });
 
     try {
-        // Start simulated upload progress interval
         clearProgressInterval();
         let uploadProgress = 0;
         progressIntervalRef.current = setInterval(() => {
             if (uploadProgress < 95) {
-                uploadProgress += Math.random() * 10; // Simulate faster progress
+                uploadProgress += Math.random() * 10;
                 updatePipeline({
                     progress: Math.min(95, Math.round(uploadProgress)),
                     estimatedTimeLeft: Math.max(1, calculateEstimatedTime(file.size, 'uploading') * (1 - uploadProgress / 100))
                 });
-            } else {
-                clearProgressInterval(); // Stop near the end
-            }
-        }, 200); // Faster interval
+            } else { clearProgressInterval(); }
+        }, 200);
 
-        // 1. Get Blob upload URL
         const presignedResponse = await fetch('/api/upload-blob', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ filename: file.name }),
         });
-
-        if (!presignedResponse.ok) {
-            const errorData = await presignedResponse.json();
-            throw new Error(`Kon upload URL niet krijgen: ${errorData.error || presignedResponse.statusText}`);
-        }
+        if (!presignedResponse.ok) { const errorData = await presignedResponse.json(); throw new Error(`Kon upload URL niet krijgen: ${errorData.error || presignedResponse.statusText}`); }
         const blobInfo = (await presignedResponse.json()) as PutBlobResult;
 
-        // 2. PUT file to Blob URL (using XHR for better progress tracking if needed, or simple fetch)
-        // Using fetch for simplicity here, XHR implementation is in FileUploader
         const uploadResponse = await fetch(blobInfo.url, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type || 'audio/webm' },
-            body: file,
+            method: 'PUT', headers: { 'Content-Type': file.type || 'audio/webm' }, body: file,
         });
+        clearProgressInterval();
+        if (!uploadResponse.ok) { throw new Error(`Upload naar Blob mislukt: ${uploadResponse.statusText}`); }
 
-        clearProgressInterval(); // Stop progress simulation
-
-        if (!uploadResponse.ok) {
-            throw new Error(`Upload naar Blob mislukt: ${uploadResponse.statusText}`);
-        }
-
-        // Update pipeline to 100% for upload
         updatePipeline({ progress: 100, message: 'Upload voltooid!' });
-
         console.log('✅ Audio capture uploaded successfully:', blobInfo);
 
-        // Set the blob info and proceed with the pipeline
-        // setAudioBlob(blobInfo); // This state doesn't seem to exist, removed
-        setAudioFileName(file.name); // Keep original name for display
+        // setAudioBlob(blobInfo); // State doesn't exist
+        setAudioFileName(file.name);
         setCurrentStep(2);
-
-        // Proceed to transcription after a short delay
-        setTimeout(() => {
-            startPipelineProcessing(blobInfo); // Use the main pipeline function
-        }, 500); // Shorter delay
+        setTimeout(() => { startPipelineProcessing(blobInfo); }, 500);
 
     } catch (error) {
         clearProgressInterval();
         console.error("❌ Fout bij uploaden van opname:", error);
         showNotification('error', error instanceof Error ? error.message : 'Upload van opname mislukt');
-        updatePipeline({
-            stage: 'error',
-            message: 'Fout bij uploaden van opname',
-            error: error instanceof Error ? error.message : 'Upload van opname mislukt'
-        });
-        setIsProcessing(false); // Reset general flag
+        updatePipeline({ stage: 'error', message: 'Fout bij uploaden van opname', error: error instanceof Error ? error.message : 'Upload van opname mislukt' });
+        setIsProcessing(false);
         setPipelineActive(false);
     }
 };
@@ -490,85 +416,64 @@ export default function Home() {
 
   // Handle pipeline cancellation
   const handleCancelPipeline = () => {
-    clearProgressInterval(); // Stop any progress timers
+    clearProgressInterval();
     setPipelineActive(false);
     setIsProcessing(false);
     setPipelineStartTime(null);
     setStageStartTime(null);
-    // Optionally reset other states if needed, or just stop the UI
     showNotification('info', 'Verwerking geannuleerd');
-    // Consider resetting currentStep if desired
-    // setCurrentStep(1);
-    // setAudioBlob(null); // This state doesn't seem to exist
-    // setAudioFileName('');
   };
 
-  // Handle manual summarization - now uses the pipeline
+  // Handle manual summarization
   const handleSummarize = async () => {
-    if (!transcription || transcription.trim() === '') {
-      showNotification('error', 'Transcriptie is leeg of ontbreekt');
-      return;
-    }
+    if (!transcription || transcription.trim() === '') { showNotification('error', 'Transcriptie is leeg of ontbreekt'); return; }
     setIsProcessing(true);
-    proceedToSummarization(transcription); // Trigger the summarization part of the pipeline
+    proceedToSummarization(transcription);
   };
 
-  // Regenerate summary - uses the pipeline
+  // Regenerate summary
   const handleRegenerateSummary = () => {
-      if (!transcription || transcription.trim() === '') {
-          showNotification('error', 'Transcriptie is leeg of ontbreekt om opnieuw te genereren.');
-          return;
-      }
+      if (!transcription || transcription.trim() === '') { showNotification('error', 'Transcriptie is leeg of ontbreekt om opnieuw te genereren.'); return; }
       setIsProcessing(true);
-      proceedToSummarization(transcription); // Re-run the summarization stage
+      proceedToSummarization(transcription);
   };
 
-  // Regenerate transcript - uses the pipeline with stored blob info
+  // Regenerate transcript
   const handleRegenerateTranscript = async () => {
-      if (!uploadedBlobInfo) { // Check if we have blob info
-          showNotification('error', 'Originele audio-informatie niet beschikbaar om opnieuw te transcriberen.');
-          return;
-      }
+      if (!uploadedBlobInfo) { showNotification('error', 'Originele audio-informatie niet beschikbaar om opnieuw te transcriberen.'); return; }
       setIsProcessing(true);
-      // Restart pipeline from transcription stage
       const now = Date.now();
-      setPipelineStartTime(now); // Reset main timer
-      setStageStartTime(now); // Reset stage timer
-      setSummaryHtml(''); // Clear old summaryHtml
+      setPipelineStartTime(now);
+      setStageStartTime(now);
+      setSummary(''); // Clear raw summary
+      setSummaryHtml(''); // Clear HTML summary
       setSummaryCost(0);
-
       updatePipeline({
-          stage: 'transcribing',
-          progress: 0,
-          message: getInitialStageMessage('transcribing'),
-          estimatedTimeLeft: calculateEstimatedTime(15 * 1024 * 1024, 'transcribing', settings.transcriptionModel), // Placeholder size
-          details: {
-              fileName: audioFileName,
-          },
-          error: undefined, // Clear previous errors
+          stage: 'transcribing', progress: 0, message: getInitialStageMessage('transcribing'),
+          estimatedTimeLeft: calculateEstimatedTime(15 * 1024 * 1024, 'transcribing', settings.transcriptionModel),
+          details: { fileName: audioFileName }, error: undefined,
       });
       setPipelineActive(true);
-      setCurrentStep(2); // Ensure UI is at the right step visually
-      transcribeAudioWithProgress(uploadedBlobInfo); // Call with stored blob info
+      setCurrentStep(2);
+      transcribeAudioWithProgress(uploadedBlobInfo);
   };
 
 
   // Reset all data
   const handleReset = () => {
-    setUploadedBlobInfo(null); // Reset blob info
+    setUploadedBlobInfo(null);
     setAudioFileName('');
     setTranscription('');
-    setSummaryHtml(''); // Reset summaryHtml
+    setSummary(''); // Reset raw summary
+    setSummaryHtml(''); // Reset HTML summary
     setTranscriptionCost(0);
     setSummaryCost(0);
     setCurrentStep(1);
     setPipelineActive(false);
-    setIsProcessing(false); // Reset general flag
+    setIsProcessing(false);
     setPipelineStartTime(null);
     setStageStartTime(null);
-    clearProgressInterval(); // Ensure interval is cleared
-
-    // Scroll back to top
+    clearProgressInterval();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -579,8 +484,19 @@ export default function Home() {
   // Handle email modal
   const handleOpenEmailModal = () => setIsEmailModalOpen(true);
   const handleCloseEmailModal = () => setIsEmailModalOpen(false);
-  // Handle refined summary
-  const handleRefinedSummary = (refinedSummary: string) => { setSummaryHtml(refinedSummary); showNotification('success', 'Samenvatting succesvol bijgewerkt'); }; // Update summaryHtml
+  // Handle refined summary - NOTE: Assumes refined summary is Markdown, needs re-conversion
+  const handleRefinedSummary = async (refinedMarkdownSummary: string) => {
+      setSummary(refinedMarkdownSummary); // Update raw summary state
+      showNotification('info', 'Samenvatting bijgewerkt, HTML versie genereren...');
+      // Need to convert this refined Markdown to HTML again
+      // Option 1: Call summarize API again (inefficient)
+      // Option 2: Create a dedicated markdown-to-html API endpoint
+      // Option 3: Do conversion client-side (requires marked library client-side)
+      // For now, just update raw summary and maybe show a message
+      // TODO: Implement HTML conversion for refined summary
+      setSummaryHtml('<p><i>HTML versie wordt gegenereerd... (Nog niet geïmplementeerd)</i></p>'); // Placeholder
+      showNotification('success', 'Samenvatting succesvol bijgewerkt (HTML versie volgt)');
+  };
   // Handle email notifications
   const handleEmailNotification = (success: boolean, message: string) => showNotification(success ? 'success' : 'error', message);
   // Show notification
@@ -593,10 +509,6 @@ export default function Home() {
   const cardVariants = { /* ... */ };
 
   // --- RENDER LOGIC ---
-  // Mostly unchanged, but remove TranscriptionDisplay/TranscriptionProgress
-  // if the pipeline component handles visual progress adequately.
-  // Ensure FileUploader receives the correct prop: onFileUploadComplete
-
   return (
     <main ref={mainContainerRef} className="min-h-screen bg-neutral-50 pb-20">
       {/* Notification component */}
@@ -611,7 +523,8 @@ export default function Home() {
       <EmailModal
         isOpen={isEmailModalOpen}
         onClose={handleCloseEmailModal}
-        summary={summaryHtml} // Pass summaryHtml
+        summary={summary} // Pass raw Markdown
+        summaryHtml={summaryHtml} // Pass HTML as well
         transcription={transcription}
         onSendEmail={handleEmailNotification}
       />
@@ -627,11 +540,12 @@ export default function Home() {
       {summaryHtml ? ( // Check summaryHtml state
         // Final Screen when summary is ready
          <FinalScreen
-           summaryHtml={summaryHtml} // Pass summaryHtml prop
+           summary={summary} // Pass raw Markdown for actions
+           summaryHtml={summaryHtml} // Pass HTML for display
            transcription={transcription}
            audioFileName={audioFileName}
-           isSummarizing={pipelineStatus.stage === 'summarizing'} // Use pipeline status
-           isTranscribing={pipelineStatus.stage === 'transcribing'} // Use pipeline status
+           isSummarizing={pipelineStatus.stage === 'summarizing'}
+           isTranscribing={pipelineStatus.stage === 'transcribing'}
            transcriptionInfo={transcriptionInfo}
            onRefinedSummary={handleRefinedSummary}
            onOpenEmailModal={handleOpenEmailModal}

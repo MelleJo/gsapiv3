@@ -126,9 +126,10 @@ Vat nu de volgende transcriptie samen:`;
       selectedModel.outputCost
     );
 
-    // Return the HTML summary and usage info
+    // Return BOTH raw Markdown and HTML summary, plus usage info
     return NextResponse.json({
-      summaryHtml, // Return HTML version
+      summary: summary, // Original Markdown
+      summaryHtml: summaryHtml, // Converted HTML
       usage: {
         model: selectedModel.name,
         inputTokens: inputTokenCount,
