@@ -124,14 +124,16 @@ export async function POST(request: Request) {
         transcriptionOptions.prompt = prompt;
     }
 
+    // Call OpenAI API - it returns a Transcription object even with response_format: 'text'
     const transcription = await openai.audio.transcriptions.create(transcriptionOptions);
 
+    // Access the actual text from the 'text' property
     console.log(`✅ Transcription received from OpenAI (${transcription.text.length} characters).`);
 
     // 4. Return the transcription text
     return NextResponse.json({
         success: true,
-        transcription: transcription.text // Correctly access the 'text' property
+        transcription: transcription.text // Return the text property
     });
 
   } catch (error: any) {
