@@ -3,10 +3,9 @@
 
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef, ReactNode } from 'react'; // Added ReactNode
-import ReactMarkdown, { Components } from 'react-markdown'; // Import Components type
-import remarkGfm from 'remark-gfm'; // Import remark-gfm for table support
-// Removed incorrect type import
+import React, { HTMLAttributes, forwardRef, ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown'; // Keep ReactMarkdown
+import remarkGfm from 'remark-gfm'; // Keep remark-gfm for table support
 
 // Define MotionDiv and MotionButton components (no changes needed here)
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -29,25 +28,13 @@ interface SummaryDisplayProps {
   isLoading: boolean;
 }
 
-// Define custom renderers for table elements
-const markdownComponents: Components = {
-  table: ({ node, ...props }) => <table className="min-w-full border-collapse border border-gray-300 my-4" {...props} />,
-  thead: ({ node, ...props }) => <thead className="bg-gray-100" {...props} />,
-  tbody: ({ node, ...props }) => <tbody {...props} />,
-  // Use 'any' for props type and safely access isHeader
-  tr: (props: any) => <tr className={`border-b border-gray-200 ${!props.isHeader ? 'hover:bg-gray-50' : ''}`} {...props} />,
-  th: (props: any) => <th className="border border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-700" {...props} />,
-  td: (props: any) => <td className="border border-gray-300 px-4 py-2 text-sm text-gray-600 align-top" {...props} />,
-  // Keep default rendering for other elements by not specifying them
-};
-
+// REMOVED custom markdownComponents definition
 
 export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Simplified copy function - copies raw summary text
-  // We will address Outlook copy/paste later if needed
   const copyToClipboard = () => {
     navigator.clipboard.writeText(summary || '');
     setCopied(true);
@@ -124,7 +111,7 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           )}
         </AnimatePresence>
 
-        {/* Copy button remains the same, but now copies raw Markdown */}
+        {/* Copy button remains the same */}
         <MotionButton
           variants={buttonVariants}
           whileHover="hover"
@@ -165,18 +152,18 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         </MotionButton>
       </div>
 
-      {/* Content area - Now uses ReactMarkdown with custom components */}
+      {/* Content area - Simplified rendering */}
       <div className="p-8">
         <div
           ref={contentRef}
            className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar"
          >
-           {/* Apply Tailwind typography styles to a wrapping div for non-table elements */}
-           {/* NOTE: Removed prose class from here as custom components handle styling */}
-           <div className="max-w-none">
+           {/* Apply Tailwind typography styles to the wrapping div */}
+           {/* Rely on prose + remarkGfm to handle all markdown including tables */}
+           <div className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none">
              <ReactMarkdown
                remarkPlugins={[remarkGfm]} // Enable GFM for tables, etc.
-               components={markdownComponents} // Apply custom renderers
+               // REMOVED components prop
              >
                {summary}
              </ReactMarkdown>
@@ -200,7 +187,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
            background: #9ca3af;
          }
-       `}</style>
+
+`}</style>
      </MotionDiv>
    );
 }

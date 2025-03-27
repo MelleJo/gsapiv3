@@ -34,12 +34,12 @@ export async function POST(request: Request) {
     requestBody = await request.json();
   } catch (error) {
     console.error('❌ Error parsing request body:', error);
-    return NextResponse.json({ error: 'Invalid request body format.' }, { status: 400 });
-  }
+     return NextResponse.json({ error: 'Invalid request body format.' }, { status: 400 });
+   }
 
-  const { audioUrl, model: modelId = 'whisper-1', language = 'nl', prompt } = requestBody;
+   const { audioUrl, model: modelId = 'gpt-4o-mini-transcribe', language = 'nl', prompt } = requestBody; // Changed default model
 
-  if (!audioUrl) {
+   if (!audioUrl) {
     console.error('❌ Missing audioUrl in request body');
     return NextResponse.json({ error: 'Missing audioUrl in request body' }, { status: 400 });
   }
