@@ -1,6 +1,6 @@
 // src/app/api/upload-blob/route.ts
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { NextResponse } from 'next/server';
+// Removed NextResponse import
 import { nanoid } from '@/lib/nanoid'; // Assuming you have this utility
 
 // Use edge runtime for optimal performance with handleUpload
@@ -28,7 +28,7 @@ const validMimeTypesMap: Record<string, string[]> = {
 // Flattened list of allowed MIME types for Vercel Blob
 const allowedContentTypes = Array.from(new Set(Object.values(validMimeTypesMap).flat()));
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> { // Changed return type to Promise<Response>
   const body = (await request.json()) as HandleUploadBody;
 
   try {
@@ -86,13 +86,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
 
     // handleUpload returns the blob details upon success (PutBlobResult)
-    return NextResponse.json(jsonResponse);
+    // Use Response.json instead of NextResponse.json
+    return Response.json(jsonResponse);
   } catch (error) {
     console.error('❌ Error in /api/upload-blob:', error);
     // The error message is passed from handleUpload or caught exceptions
     const message = error instanceof Error ? error.message : 'Internal Server Error';
     // Ensure a standard error structure
-    return NextResponse.json(
+    // Use Response.json instead of NextResponse.json
+    return Response.json(
       { error: message },
       // handleUpload might throw errors with specific statuses (e.g., 400 for bad requests)
       // Use 400 as default if status is not available
