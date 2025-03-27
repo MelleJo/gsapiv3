@@ -1,118 +1,102 @@
 // src/app/api/upload-blob/route.ts
-// import { NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
-import { nanoid } from '@/lib/nanoid';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { NextResponse } from 'next/server';
+import { nanoid } from '@/lib/nanoid'; // Assuming you have this utility
 
+// Use edge runtime for optimal performance with handleUpload
 export const runtime = 'edge';
-export const maxDuration = 300; // 5 minutes max execution time
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'; // Ensure dynamic execution
 
-export async function POST(request: Request) {
+// Define valid MIME types more robustly
+const validMimeTypesMap: Record<string, string[]> = {
+  // Common audio formats
+  mp3: ['audio/mp3', 'audio/mpeg'],
+  wav: ['audio/wav', 'audio/x-wav'],
+  ogg: ['audio/ogg', 'audio/vorbis'],
+  flac: ['audio/flac'],
+  m4a: ['audio/m4a', 'audio/mp4', 'audio/x-m4a'], // Often reported as audio/mp4
+  aac: ['audio/aac'],
+  webm_audio: ['audio/webm'], // Specifically audio webm
+  // Common video formats (allow video upload, conversion happens later)
+  mp4: ['video/mp4'],
+  mov: ['video/quicktime'],
+  avi: ['video/x-msvideo'],
+  webm_video: ['video/webm'],
+  wmv: ['video/x-ms-wmv'],
+};
+
+// Flattened list of allowed MIME types for Vercel Blob
+const allowedContentTypes = Array.from(new Set(Object.values(validMimeTypesMap).flat()));
+
+export async function POST(request: Request): Promise<NextResponse> {
+  const body = (await request.json()) as HandleUploadBody;
+
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    
-    if (!file) {
-      return Response.json(
-        { error: 'Geen bestand aangeleverd' },
-        { status: 400 }
-      );
-    }
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname /*, clientPayload */) => {
+        // Generate a unique pathname prefix and keep original extension
+        const extension = pathname.split('.').pop()?.toLowerCase() || 'bin';
+        // Simple sanitization for the base name part
+        const baseName = pathname.substring(0, pathname.lastIndexOf('.'))
+                                .replace(/[^a-zA-Z0-9_.-]/g, '_');
 
-    // Get the file extension and generate a unique filename
-    const fileName = file.name;
-    const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
-    const uniqueFileName = `${nanoid()}-${Date.now()}.${fileExt}`;
-    
-    // Create a comprehensive mapping of file extensions to MIME types
-    const validMimeTypes = {
-      // Common audio formats
-      mp3: ['audio/mp3', 'audio/mpeg', 'audio/x-mpeg', 'audio/mpeg3'],
-      wav: ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
-      ogg: ['audio/ogg', 'audio/x-ogg', 'audio/vorbis', 'audio/oga'],
-      flac: ['audio/flac', 'audio/x-flac'],
-      m4a: ['audio/m4a', 'audio/x-m4a', 'audio/aac', 'audio/mp4', 'audio/x-mp4'],
-      aac: ['audio/aac', 'audio/x-aac', 'audio/aacp'],
-      mpeg: ['audio/mpeg', 'audio/x-mpeg'],
-      mpga: ['audio/mpeg', 'audio/mpga'],
-      oga: ['audio/ogg', 'audio/oga'],
-      webm: ['audio/webm', 'video/webm'],
-      mp4: ['video/mp4', 'audio/mp4', 'application/mp4', 'video/x-mp4']
-    };
-    
-    // Valid extensions list (for user-friendly error messages)
-    const validExtensions = Object.keys(validMimeTypes);
-    
-    // Validate file extension
-    const isValidExtension = validExtensions.includes(fileExt);
-    
-    // Get file type from File object
-    const fileType = file.type.toLowerCase();
-    
-    // Check if MIME type is valid based on our mapping
-    const isValidMimeType = Object.values(validMimeTypes).some(types => 
-      types.includes(fileType)
-    );
-    
-    // Special case for m4a files which might be reported as mp4 audio
-    const isM4aWithMp4MimeType = 
-      (fileExt === 'm4a' && fileType === 'audio/mp4') || 
-      (fileExt === 'm4a' && fileType === 'video/mp4');
-    
-    if (!isValidExtension && !isValidMimeType && !isM4aWithMp4MimeType) {
-      return Response.json(
-        { error: `Ongeldig bestandsformaat. Ondersteunde formaten: ${validExtensions.join(', ')}` },
-        { status: 400 }
-      );
-    }
-    
-    // Set appropriate content type for the upload
-    let uploadContentType = file.type;
-    
-    // Fix content type for special cases
-    if (fileExt === 'm4a' && fileType === 'video/mp4') {
-      uploadContentType = 'audio/mp4';
-    }
+        const newPathname = `${nanoid()}/${baseName}.${extension}`;
 
-    // File size check and logging
-    const fileSize = file.size;
-    const fileSizeMB = fileSize / (1024 * 1024);
-    
-    // Theoretically we can handle up to 4.5GB with Vercel Blob, but
-    // set a reasonable limit that works within API limitations
-    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
-    if (fileSize > MAX_FILE_SIZE) {
-      return Response.json(
-        { error: `Bestand te groot (${fileSizeMB.toFixed(2)}MB). Maximale bestandsgrootte is 500MB.` },
-        { status: 400 }
-      );
-    }
-    
-    console.log(`Bestandsupload naar Vercel Blob: ${fileName}, grootte: ${fileSizeMB.toFixed(2)}MB`);
+        console.log(`Generating token for pathname: ${pathname}, newPathname: ${newPathname}`);
 
-    // Upload naar Vercel Blob
-    const blob = await put(uniqueFileName, file, {
-      access: 'public',
-      contentType: uploadContentType,
-    } as any);
+        // Basic validation based on extension before generating token
+        if (!Object.keys(validMimeTypesMap).includes(extension)) {
+            // Handle cases like 'webm' which can be audio or video
+            if (!(extension === 'webm' || extension === 'mp4')) {
+              console.warn(`Potentially invalid extension provided: ${extension}`);
+              // Consider throwing error here if strict validation is needed pre-upload
+              // throw new Error(`Invalid file extension: ${extension}`);
+            }
+        }
 
-    return Response.json({
-      success: true,
-      blob: {
-        url: blob.url,
-        size: fileSize,
-        contentType: uploadContentType,
-        originalName: fileName,
-      }
+
+        return {
+          allowedContentTypes: allowedContentTypes, // Use the defined list
+          tokenPayload: JSON.stringify({
+            originalFilename: pathname, // Store original filename if needed
+            // userId: 'user123', // Example: Add user context if available
+          }),
+          // Set cache control for uploaded files (e.g., 1 year immutable)
+          cacheControlMaxAge: 365 * 24 * 60 * 60,
+          // Add unique prefix to the pathname
+          pathname: newPathname,
+        };
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
+        // Optional: Perform actions after upload is complete
+        // Corrected: Removed blob.size as it's not in PutBlobResult
+        console.log('✅ Blob upload completed:', blob.pathname);
+        try {
+          // Example: Log completion with payload data
+          const payload = JSON.parse(tokenPayload || '{}');
+          console.log('Original filename from token:', payload.originalFilename);
+          // await db.update({ blobUrl: blob.url, ...payload });
+        } catch (error) {
+          console.error('Error in onUploadCompleted:', error);
+          // Don't throw from here to avoid breaking the client response
+        }
+      },
     });
+
+    // handleUpload returns the blob details upon success (PutBlobResult)
+    return NextResponse.json(jsonResponse);
   } catch (error) {
-    console.error('Fout bij uploaden naar Vercel Blob:', error);
-    
-    const errorMessage = error instanceof Error ? error.message : 'Fout bij uploaden naar Vercel Blob';
-    
-    return Response.json(
-      { error: errorMessage },
-      { status: 500 }
+    console.error('❌ Error in /api/upload-blob:', error);
+    // The error message is passed from handleUpload or caught exceptions
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    // Ensure a standard error structure
+    return NextResponse.json(
+      { error: message },
+      // handleUpload might throw errors with specific statuses (e.g., 400 for bad requests)
+      // Use 400 as default if status is not available
+      { status: (error as any).status || 400 },
     );
   }
 }
