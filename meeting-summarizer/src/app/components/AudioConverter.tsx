@@ -10,9 +10,6 @@ interface FFmpegInstance extends FFmpeg {
   isLoaded: boolean;
 }
 
-// No need for a utility function, we'll handle the ArrayBuffer directly
-
-// Define props for the component
 interface AudioConverterProps {
   file: File | null;
   onConversionComplete: (convertedFile: File) => void;
@@ -59,7 +56,7 @@ export default function AudioConverter({
                 const currentTimeInSeconds = hours * 3600 + minutes * 60 + seconds;
                 
                 // We also need the duration to calculate percentage
-                // For simplicity, we'll use a trick - we'll start at 5% and gradually increase
+                // For simplicity, we'll start at 5% and gradually increase
                 // This isn't perfect but gives the user feedback
                 const estimatedProgress = Math.min(95, Math.round(currentTimeInSeconds * 3 + 5));
                 setProgress(estimatedProgress);
@@ -105,41 +102,9 @@ export default function AudioConverter({
       if (!file || !ffmpegRef.current || !isFFmpegLoaded) return;
 
       // Check file size for appropriate conversion settings
-      // In the convertFile function in AudioConverter.tsx
-// Find the place where FFmpeg options are set and update:
-
-    // Check file size for appropriate conversion settings
-    const isLargeFile = file.size > 50 * 1024 * 1024; // 50MB
-    const isHugeFile = file.size > 100 * 1024 * 1024; // 100MB
-
-    // Common options, but more aggressive for larger files
-    const options = [
-      '-i', inputFileName,
-      '-vn', // No video
-      '-c:a', 'libmp3lame',
-      '-ac', '1', // Convert to mono
-    ];
-
-    // Add quality settings based on file size
-    if (isHugeFile) {
-      // Very aggressive settings for huge files
-      options.push(
-        '-ab', '32k', // Very low bitrate
-        '-ar', '16000', // 16kHz sample rate
-      );
-    } else if (isLargeFile) {
-      // Aggressive settings for large files
-      options.push(
-        '-ab', '48k', // Low bitrate for speech
-        '-ar', '22050', // Lower sample rate
-      );
-    } else {
-      // Standard settings for normal files
-      options.push(
-        '-ab', '64k', // Reasonable bitrate for speech
-        '-ar', '22050', // Lower sample rate for speech
-      );
-    }
+      const isLargeFile = file.size > 50 * 1024 * 1024; // 50MB
+      const isHugeFile = file.size > 100 * 1024 * 1024; // 100MB
+      const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
       
       // Only skip if it's already an optimized MP3 file (under 10MB)
       const skipConversion = 
@@ -161,7 +126,7 @@ export default function AudioConverter({
         const ffmpeg = ffmpegRef.current;
         
         // Get a clean input filename
-        const inputFileName = 'input.' + (fileExtension || 'mp4');
+        const inputFileName = `input.${fileExtension || 'mp4'}`;
         
         // Determine output filename based on target format
         const outputFileName = `output.${targetFormat}`;
@@ -171,98 +136,86 @@ export default function AudioConverter({
         // Convert file to ArrayBuffer and create a compatible Uint8Array
         const fileData = await file.arrayBuffer();
 
-        // Get the raw function and call it directly to bypass TypeScript's type system completely
-        const rawFFmpeg = ffmpeg as any;
-        await rawFFmpeg.writeFile(inputFileName, new Uint8Array(fileData));
+        // Write input file to FFmpeg's virtual filesystem
+        await ffmpeg.writeFile(inputFileName, new Uint8Array(fileData));
         
-        // For very large files (>50MB), use more aggressive compression and segmentation
+        // For very large files (>50MB), use more aggressive compression and optimization
         // This ensures the API can process the audio files more reliably
-        const ffmpegArgs = isLargeFile ? [
-          '-i', inputFileName,
-          '-vn',                       // No video
-          '-c:a', 'libmp3lame',        // Use MP3 codec
-          '-b:a', '48k',               // Lower bitrate (48kbps) for speech
-          '-ac', '1',                  // Convert to mono
-          '-ar', '16000',              // Lower sample rate (16kHz) for speech
-          '-f', 'segment',             // Enable segmentation
-          '-segment_time', '300',      // 5 minutes per segment
-          '-reset_timestamps', '1',
-          outputFileName.replace('.mp3', '_%03d.mp3') // Output pattern for segments
-        ] : [
-          '-i', inputFileName,
-          '-vn',                       // No video
-          '-c:a', targetFormat === 'wav' ? 'pcm_s16le' : 'libmp3lame',
-          '-ar', '22050',              // Reduced sample rate
-          '-ac', '1',                  // Convert to mono
-          ...(targetFormat === 'mp3' ? ['-b:a', '64k'] : []), // MP3-specific settings
-          outputFileName
-        ];
+        const ffmpegArgs = [];
         
-        // Run FFmpeg conversion with appropriate args
-        await ffmpeg.exec(ffmpegArgs);
+        // Input file
+        ffmpegArgs.push('-i', inputFileName);
         
-        let combinedData = new Uint8Array(0);
+        // Common options
+        ffmpegArgs.push('-vn');  // No video
+        ffmpegArgs.push('-c:a', targetFormat === 'wav' ? 'pcm_s16le' : 'libmp3lame');
+        ffmpegArgs.push('-ac', '1');  // Convert to mono
         
-        // For large files that were segmented, combine the segments
-        if (isLargeFile && targetFormat === 'mp3') {
-          let segmentIndex = 0;
-          
-          while (true) {
-            try {
-              const segmentName = outputFileName.replace('.mp3', `_${String(segmentIndex).padStart(3, '0')}.mp3`);
-              const segmentData = await ffmpeg.readFile(segmentName);
-              
-              // Convert FileData to Uint8Array
-              // Alternative approach with stronger type assertion
-              const segmentUint8 = segmentData instanceof Uint8Array ? 
-                (segmentData as unknown as Uint8Array) : 
-                new TextEncoder().encode(segmentData as string);
-              
-              // Combine with existing data
-              const newData = new Uint8Array(combinedData.length + segmentUint8.length);
-              newData.set(combinedData);
-              newData.set(segmentUint8, combinedData.length);
-              combinedData = newData;
-              
-              // Clean up segment
-              await ffmpeg.deleteFile(segmentName);
-              segmentIndex++;
-              
-              // Update progress (allocate 95% of progress to conversion, 5% to combining)
-              const combiningProgress = 95 + (segmentIndex * 5 / (segmentIndex + 1));
-              setProgress(Math.min(99, Math.round(combiningProgress)));
-              if (onProgress) onProgress(Math.min(99, Math.round(combiningProgress)));
-            } catch (segmentError) {
-              // No more segments (or error reading segments)
-              console.log(`Processed ${segmentIndex} segments`);
-              break;
-            }
+        // Quality settings based on file size
+        if (isHugeFile) {
+          // Very aggressive settings for huge files
+          ffmpegArgs.push('-ar', '16000');  // 16kHz sample rate
+          if (targetFormat === 'mp3') {
+            ffmpegArgs.push('-b:a', '32k');  // Very low bitrate
+          }
+        } else if (isLargeFile) {
+          // Aggressive settings for large files
+          ffmpegArgs.push('-ar', '22050');  // Lower sample rate
+          if (targetFormat === 'mp3') {
+            ffmpegArgs.push('-b:a', '48k');  // Low bitrate for speech
           }
         } else {
-          // For regular files, just read the output
-          const data = await ffmpeg.readFile(outputFileName);
-          combinedData = data instanceof Uint8Array ? data : new TextEncoder().encode(data as string);
+          // Standard settings for normal files
+          ffmpegArgs.push('-ar', '22050');  // Reduced sample rate
+          if (targetFormat === 'mp3') {
+            ffmpegArgs.push('-b:a', '64k');  // Reasonable bitrate for speech
+          }
         }
         
-        // Create a new File object
-        const convertedBlob = new Blob([combinedData], { 
-          type: targetFormat === 'wav' ? 'audio/wav' : 'audio/mpeg' 
-        });
+        // For large files, use segmentation to avoid memory issues
+        if (isLargeFile && targetFormat === 'mp3') {
+          ffmpegArgs.push(
+            '-f', 'segment',             // Enable segmentation
+            '-segment_time', isHugeFile ? '180' : '300',  // 3 or 5 minutes per segment
+            '-reset_timestamps', '1',
+            outputFileName.replace('.mp3', '_%03d.mp3')   // Output pattern for segments
+          );
+        } else {
+          // Standard output file
+          ffmpegArgs.push(outputFileName);
+        }
+        
+        // Run FFmpeg command
+        await ffmpeg.exec(ffmpegArgs);
+        
+        // Process the output
+        let combinedData: Uint8Array;
+        
+        if (isLargeFile && targetFormat === 'mp3') {
+          // Combine segments for large files
+          combinedData = await combineSegments(ffmpeg, outputFileName);
+        } else {
+          // Direct file read for smaller files
+          const data = await ffmpeg.readFile(outputFileName);
+          combinedData = data instanceof Uint8Array ? data : new TextEncoder().encode(data as string);
+          await ffmpeg.deleteFile(outputFileName);
+        }
+        
+        // Clean up input file
+        await ffmpeg.deleteFile(inputFileName);
+        
+        // Create final converted file
+        const contentType = targetFormat === 'wav' ? 'audio/wav' : 'audio/mpeg';
+        const convertedBlob = new Blob([combinedData], { type: contentType });
         
         // Generate new file name with correct extension
         const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
         const newFileName = `${originalName}.${targetFormat}`;
         
         const convertedFile = new File([convertedBlob], newFileName, {
-          type: targetFormat === 'wav' ? 'audio/wav' : 'audio/mpeg',
+          type: contentType,
           lastModified: Date.now()
         });
-        
-        // Clean up FFmpeg's file system
-        await ffmpeg.deleteFile(inputFileName);
-        if (!isLargeFile) {
-          await ffmpeg.deleteFile(outputFileName);
-        }
         
         console.log(`Conversion complete: ${newFileName} (${formatBytes(convertedFile.size)})`);
         
@@ -271,6 +224,7 @@ export default function AudioConverter({
         if (onProgress) onProgress(100);
         
         onConversionComplete(convertedFile);
+        
       } catch (conversionError) {
         console.error('Conversion failed:', conversionError);
         setError(`Conversie mislukt: ${conversionError instanceof Error ? conversionError.message : 'Onbekende fout'}`);
@@ -284,6 +238,64 @@ export default function AudioConverter({
       convertFile();
     }
   }, [file, isFFmpegLoaded, targetFormat, onConversionComplete, onError, isConverting, onProgress]);
+
+  // Helper function to combine segmented files
+  const combineSegments = async (ffmpeg: any, outputFilePattern: string): Promise<Uint8Array> => {
+    let combinedData = new Uint8Array(0);
+    let segmentIndex = 0;
+    
+    while (true) {
+      try {
+        const segmentName = outputFilePattern.replace('.mp3', `_${String(segmentIndex).padStart(3, '0')}.mp3`);
+        const segmentExists = await checkFileExists(ffmpeg, segmentName);
+        
+        if (!segmentExists) {
+          break; // No more segments
+        }
+        
+        const segmentData = await ffmpeg.readFile(segmentName);
+        
+        // Convert FileData to Uint8Array
+        const segmentUint8 = segmentData instanceof Uint8Array ? 
+          segmentData : 
+          new TextEncoder().encode(segmentData as string);
+        
+        // Combine with existing data
+        const newData = new Uint8Array(combinedData.length + segmentUint8.length);
+        newData.set(combinedData);
+        newData.set(segmentUint8, combinedData.length);
+        combinedData = newData;
+        
+        // Clean up segment
+        await ffmpeg.deleteFile(segmentName);
+        segmentIndex++;
+      } catch (error) {
+        if (segmentIndex === 0) {
+          // If no segments were processed, this is a real error
+          throw error;
+        }
+        // Otherwise we've just run out of segments
+        break;
+      }
+    }
+    
+    if (combinedData.length === 0) {
+      throw new Error('No output was generated during conversion');
+    }
+    
+    return combinedData;
+  };
+
+  // Helper to check if a file exists in the FFmpeg virtual filesystem
+  const checkFileExists = async (ffmpeg: any, fileName: string): Promise<boolean> => {
+    try {
+      // Try to read the file stats
+      await ffmpeg.stat(fileName);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
 
   return (
     <div className="audio-converter">
