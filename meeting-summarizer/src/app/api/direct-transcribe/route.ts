@@ -124,27 +124,28 @@ export async function POST(request: Request) {
         transcriptionOptions.prompt = prompt;
     }
 
-    // Call OpenAI API
-    const transcription = await openai.audio.transcriptions.create(transcriptionOptions);
+    // Call OpenAI API - response_format: 'text' should return a string
+    // Use type assertion to handle potential mismatch with SDK types
+    const transcriptionResult = await openai.audio.transcriptions.create(transcriptionOptions);
+    const transcription = transcriptionResult as unknown as string;
 
-    // --- Debugging: Log the entire response ---
-    console.log('🔍 Full OpenAI Transcription Response:', JSON.stringify(transcription, null, 2));
+    // --- Debugging: Log the result ---
+    console.log('🔍 OpenAI Transcription Result (should be string):', transcription);
     // --- End Debugging ---
 
-    // Check if the response and the text property exist and are valid
-    if (transcription && typeof transcription.text === 'string') {
-      // Access the actual text from the 'text' property
-      console.log(`✅ Transcription received from OpenAI (${transcription.text.length} characters).`);
+    // Check if the result is actually a string
+    if (typeof transcription === 'string') {
+      console.log(`✅ Transcription received from OpenAI (${transcription.length} characters).`);
 
       // 4. Return the transcription text
       return NextResponse.json({
           success: true,
-          transcription: transcription.text // Return the text property
+          transcription: transcription // Return the string directly
       });
     } else {
-      // Handle unexpected response structure
-      console.error('❌ Unexpected OpenAI response structure:', transcription);
-      throw new Error('Unexpected response structure received from OpenAI transcription API.');
+      // Handle unexpected response structure if it's not a string
+      console.error('❌ Unexpected OpenAI response structure (not a string):', transcriptionResult);
+      throw new Error('Unexpected response structure received from OpenAI transcription API (expected string).');
     }
 
   } catch (error: any) {
