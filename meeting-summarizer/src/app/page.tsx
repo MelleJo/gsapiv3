@@ -64,7 +64,7 @@ export default function Home() {
 
   // State for transcription and samenvatting
   const [transcription, setTranscription] = useState<string>('');
-  const [summary, setSummary] = useState<string>('');
+  const [summaryHtml, setSummaryHtml] = useState<string>(''); // Renamed state
 
   // State for gekozen prompt
   const [selectedPrompt, setSelectedPrompt] = useState<PromptType>({
@@ -150,7 +150,7 @@ export default function Home() {
     console.log('Pipeline starting with Blob info:', blobInfo);
     // Reset previous results
     setTranscription('');
-    setSummary('');
+    setSummaryHtml(''); // Reset summaryHtml
     setTranscriptionCost(0);
     setSummaryCost(0);
     setUploadedBlobInfo(blobInfo); // Store the blob info
@@ -368,7 +368,7 @@ export default function Home() {
       if (data.error) throw new Error(data.error);
 
       console.log('Summarization successful.');
-      setSummary(data.summary);
+      setSummaryHtml(data.summaryHtml); // Use correct state setter and data property
       // setSummaryCost(data.usage?.cost || 0); // Update cost if API provides it
 
       updatePipeline({
@@ -464,7 +464,7 @@ export default function Home() {
         console.log('✅ Audio capture uploaded successfully:', blobInfo);
 
         // Set the blob info and proceed with the pipeline
-        setAudioBlob(blobInfo); // Store blob info correctly
+        // setAudioBlob(blobInfo); // This state doesn't seem to exist, removed
         setAudioFileName(file.name); // Keep original name for display
         setCurrentStep(2);
 
@@ -499,7 +499,7 @@ export default function Home() {
     showNotification('info', 'Verwerking geannuleerd');
     // Consider resetting currentStep if desired
     // setCurrentStep(1);
-    // setAudioBlob(null);
+    // setAudioBlob(null); // This state doesn't seem to exist
     // setAudioFileName('');
   };
 
@@ -534,7 +534,7 @@ export default function Home() {
       const now = Date.now();
       setPipelineStartTime(now); // Reset main timer
       setStageStartTime(now); // Reset stage timer
-      setSummary(''); // Clear old summary
+      setSummaryHtml(''); // Clear old summaryHtml
       setSummaryCost(0);
 
       updatePipeline({
@@ -558,7 +558,7 @@ export default function Home() {
     setUploadedBlobInfo(null); // Reset blob info
     setAudioFileName('');
     setTranscription('');
-    setSummary('');
+    setSummaryHtml(''); // Reset summaryHtml
     setTranscriptionCost(0);
     setSummaryCost(0);
     setCurrentStep(1);
@@ -580,7 +580,7 @@ export default function Home() {
   const handleOpenEmailModal = () => setIsEmailModalOpen(true);
   const handleCloseEmailModal = () => setIsEmailModalOpen(false);
   // Handle refined summary
-  const handleRefinedSummary = (refinedSummary: string) => { setSummary(refinedSummary); showNotification('success', 'Samenvatting succesvol bijgewerkt'); };
+  const handleRefinedSummary = (refinedSummary: string) => { setSummaryHtml(refinedSummary); showNotification('success', 'Samenvatting succesvol bijgewerkt'); }; // Update summaryHtml
   // Handle email notifications
   const handleEmailNotification = (success: boolean, message: string) => showNotification(success ? 'success' : 'error', message);
   // Show notification
@@ -611,7 +611,7 @@ export default function Home() {
       <EmailModal
         isOpen={isEmailModalOpen}
         onClose={handleCloseEmailModal}
-        summary={summary}
+        summary={summaryHtml} // Pass summaryHtml
         transcription={transcription}
         onSendEmail={handleEmailNotification}
       />
@@ -623,11 +623,11 @@ export default function Home() {
         onCancel={handleCancelPipeline}
       />
 
-      {/* Conditional Rendering based on summary */}
-      {summary ? (
+      {/* Conditional Rendering based on summaryHtml */}
+      {summaryHtml ? ( // Check summaryHtml state
         // Final Screen when summary is ready
          <FinalScreen
-           summary={summary}
+           summaryHtml={summaryHtml} // Pass summaryHtml prop
            transcription={transcription}
            audioFileName={audioFileName}
            isSummarizing={pipelineStatus.stage === 'summarizing'} // Use pipeline status
@@ -705,7 +705,7 @@ export default function Home() {
              {/* Step 2 Placeholder (Content managed by pipeline UI) */}
              <div id="transcribe-section" className="scroll-mt-24">
                <AnimatePresence>
-                 {currentStep >= 2 && !summary && ( // Show placeholder only if processing hasn't reached summary
+                 {currentStep >= 2 && !summaryHtml && ( // Check summaryHtml state
                    <MotionDiv key="step2-placeholder" variants={cardVariants} initial="hidden" animate="visible" exit="exit" className="mb-12">
                      {/* Optionally show transcription display if needed, but pipeline shows progress */}
                      {/* <TranscriptionDisplay text={transcription} isLoading={isProcessing && pipelineStatus.stage === 'transcribing'} /> */}
@@ -717,7 +717,7 @@ export default function Home() {
              {/* Step 3 Placeholder (Content managed by pipeline UI or FinalScreen) */}
               <div id="summary-section" className="scroll-mt-24">
                 <AnimatePresence>
-                   {currentStep >= 3 && !summary && ( // Show placeholder only if processing hasn't completed
+                   {currentStep >= 3 && !summaryHtml && ( // Check summaryHtml state
                      <MotionDiv key="step3-placeholder" variants={cardVariants} initial="hidden" animate="visible" exit="exit">
                        {/* Optionally show loading state for summary */}
                      </MotionDiv>
@@ -726,7 +726,7 @@ export default function Home() {
               </div>
 
               {/* Reset button */}
-             {(currentStep > 1 || uploadedBlobInfo) && !summary && !pipelineActive && ( // Show reset if process started but not finished/active
+             {(currentStep > 1 || uploadedBlobInfo) && !summaryHtml && !pipelineActive && ( // Check summaryHtml state
                <div className="flex justify-center mt-10">
                  <button onClick={handleReset} /* Reset Button JSX */ >...</button>
                </div>
