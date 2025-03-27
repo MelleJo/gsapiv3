@@ -124,28 +124,32 @@ export async function POST(request: Request) {
         transcriptionOptions.prompt = prompt;
     }
 
-    // Call OpenAI API - response_format: 'text' should return a string
-    // Use type assertion to handle potential mismatch with SDK types
+    // Call OpenAI API
     const transcriptionResult = await openai.audio.transcriptions.create(transcriptionOptions);
-    const transcription = transcriptionResult as unknown as string;
 
-    // --- Debugging: Log the result ---
-    console.log('🔍 OpenAI Transcription Result (should be string):', transcription);
+    // --- Debugging: Log the raw result ---
+    console.log('🔍 Raw OpenAI Transcription Result:', transcriptionResult);
     // --- End Debugging ---
 
-    // Check if the result is actually a string
+    // Safely access the transcription text
+    // The result for response_format: 'text' is directly the string based on current behavior/docs
+    // However, we add checks for robustness in case the SDK changes or returns an object unexpectedly.
+    const transcription = (typeof transcriptionResult === 'string')
+                           ? transcriptionResult // If API directly returns string
+                           : (transcriptionResult as any)?.text; // Fallback: Access .text property if it's an object
+
     if (typeof transcription === 'string') {
       console.log(`✅ Transcription received from OpenAI (${transcription.length} characters).`);
 
       // 4. Return the transcription text
       return NextResponse.json({
           success: true,
-          transcription: transcription // Return the string directly
+          transcription: transcription
       });
     } else {
-      // Handle unexpected response structure if it's not a string
-      console.error('❌ Unexpected OpenAI response structure (not a string):', transcriptionResult);
-      throw new Error('Unexpected response structure received from OpenAI transcription API (expected string).');
+      // Handle failure to extract string
+      console.error('❌ Failed to extract transcription string from OpenAI response:', transcriptionResult);
+      throw new Error('Failed to extract transcription string from OpenAI API response.');
     }
 
   } catch (error: any) {
