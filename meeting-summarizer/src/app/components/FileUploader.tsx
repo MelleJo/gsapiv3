@@ -181,9 +181,11 @@ export default function FileUploader({
           handleUploadUrl: '/api/upload-blob', // Backend endpoint
           // Optional: Pass clientPayload if needed by backend
           // clientPayload: JSON.stringify({ customData: 'example' }),
-          onUploadProgress: (progress) => {
-            setUploadProgress(progress);
-            setStatusMessage(`Uploaden... (${progress}%)`);
+          onUploadProgress: (progressStatus) => {
+            // Extract percentage from the progress status object
+            const percentage = progressStatus.percentage;
+            setUploadProgress(percentage);
+            setStatusMessage(`Uploaden... (${percentage}%)`);
           },
         }
       );
