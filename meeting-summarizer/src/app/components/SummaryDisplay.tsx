@@ -1,11 +1,10 @@
 // src/app/components/SummaryDisplay.tsx
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react'; // Added useEffect
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef, ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown'; // Keep ReactMarkdown
-import remarkGfm from 'remark-gfm'; // Keep remark-gfm for table support
+import React, { HTMLAttributes, forwardRef } from 'react';
+// Removed ReactMarkdown and remarkGfm imports
 
 // Define MotionDiv and MotionButton components (no changes needed here)
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -24,24 +23,50 @@ const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, re
 MotionButton.displayName = 'MotionButton';
 
 interface SummaryDisplayProps {
-  summary: string;
+  // Expect summaryHtml instead of summary
+  summaryHtml: string;
   isLoading: boolean;
 }
 
-// REMOVED custom markdownComponents definition
-
-export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
+export default function SummaryDisplay({ summaryHtml, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Simplified copy function - copies raw summary text
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(summary || '');
-    setCopied(true);
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+  // Function to extract plain text from HTML for copying
+  const extractTextFromHtml = (html: string): string => {
+    if (typeof window === 'undefined') return ''; // Avoid errors during SSR
+    try {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      // Add line breaks between block elements for better readability
+      tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, tr').forEach(el => {
+        el.insertAdjacentText('afterend', '\n');
+      });
+      // Add extra line break after tables
+      tempDiv.querySelectorAll('table').forEach(el => {
+        el.insertAdjacentText('afterend', '\n\n');
+      });
+      return tempDiv.textContent || tempDiv.innerText || '';
+    } catch (e) {
+      console.error("Error extracting text from HTML:", e);
+      return ''; // Fallback
+    }
   };
+
+  const copyToClipboard = () => {
+    const plainText = extractTextFromHtml(summaryHtml || '');
+    if (plainText) {
+      navigator.clipboard.writeText(plainText.trim());
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } else {
+      console.warn("Could not extract text to copy.");
+      // Optionally provide user feedback here
+    }
+  };
+
 
   // Loading state remains the same
   if (isLoading) {
@@ -61,8 +86,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     );
   }
 
-  // If no summary, return null
-  if (!summary) {
+  // If no summaryHtml, return null
+  if (!summaryHtml) {
     return null;
   }
 
@@ -111,14 +136,14 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           )}
         </AnimatePresence>
 
-        {/* Copy button remains the same */}
+        {/* Copy button - now copies extracted plain text */}
         <MotionButton
           variants={buttonVariants}
           whileHover="hover"
           whileTap="tap"
           onClick={copyToClipboard}
           className="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors"
-          title="Kopiëren naar klembord"
+          title="Kopiëren als platte tekst"
           type="button"
         >
           {copied ? (
@@ -152,26 +177,23 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         </MotionButton>
       </div>
 
-      {/* Content area - Simplified rendering */}
+      {/* Content area - Render pre-generated HTML */}
       <div className="p-8">
         <div
           ref={contentRef}
            className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar"
          >
-           {/* Apply Tailwind typography styles to the wrapping div */}
-           {/* Rely on prose + remarkGfm to handle all markdown including tables */}
-           <div className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none">
-             <ReactMarkdown
-               remarkPlugins={[remarkGfm]} // Enable GFM for tables, etc.
-               // REMOVED components prop
-             >
-               {summary}
-             </ReactMarkdown>
-           </div>
+           {/* Apply prose styles to the container for default markdown element styling */}
+           {/* Render the HTML string directly */}
+           <div
+             className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none"
+             dangerouslySetInnerHTML={{ __html: summaryHtml }}
+           />
          </div>
        </div>
 
       {/* Scrollbar styles remain the same */}
+      {/* Add global styles for basic table appearance if prose doesn't cover it well enough */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
@@ -188,7 +210,29 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
            background: #9ca3af;
          }
 
-`}</style>
+         /* Basic table styling (applied directly to HTML elements) */
+         /* These might be needed if prose styles don't apply well via dangerouslySetInnerHTML */
+         .prose table {
+           width: 100%;
+           border-collapse: collapse;
+           margin-top: 1em;
+           margin-bottom: 1em;
+         }
+         .prose th, .prose td {
+           border: 1px solid #e5e7eb; /* gray-200 */
+           padding: 0.5em 1em;
+           vertical-align: top;
+         }
+         .prose th {
+           background-color: #f9fafb; /* gray-50 */
+           font-weight: 600;
+           text-align: left;
+         }
+         /* Optional: Add alternating row color if desired */
+         /* .prose tbody tr:nth-child(even) {
+           background-color: #f9fafb; /* gray-50 */
+         } */
+       `}</style>
      </MotionDiv>
    );
 }

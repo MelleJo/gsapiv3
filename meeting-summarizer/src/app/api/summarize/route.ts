@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { countTokens, calculateTextCost } from '@/lib/tokenCounter';
 import { chatModels } from '@/lib/config';
+import { marked } from 'marked'; // Import marked
 
 export const maxDuration = 300; // 5 minutes timeout
 export const dynamic = 'force-dynamic';
@@ -12,10 +13,10 @@ export async function POST(request: Request) {
   try {
     // Parse request body
     const body = await request.json();
-    
+
     // Extract parameters
     const { text, model = 'o3-mini', temperature = 0.3, prompt = '' } = body;
-    
+
     // Validate request
     if (!text) {
       return NextResponse.json(
@@ -25,8 +26,8 @@ export async function POST(request: Request) {
     }
 
     // Find the model details in the config
-    const selectedModel = chatModels.find(m => m.id === model) || 
-                          chatModels.find(m => m.id === 'o3-mini') || 
+    const selectedModel = chatModels.find(m => m.id === model) ||
+                          chatModels.find(m => m.id === 'o3-mini') ||
                           chatModels[0];
 
     // Use the provided prompt if available, otherwise fallback to default
@@ -48,11 +49,10 @@ export async function POST(request: Request) {
 
 Vat nu de volgende transcriptie samen:`;
 
-    let summary = '';
-    let outputTokenCount = 0;
+    let summary = ''; // Raw Markdown summary from OpenAI
     const inputTokenCount = countTokens(text);
 
-    // Different handling based on model
+    // --- Get summary from OpenAI ---
     if (model === 'o3-mini') {
       // For o3-mini, strictly follow the documentation example format
       try {
@@ -63,61 +63,34 @@ Vat nu de volgende transcriptie samen:`;
             role: "user",
             content: `${meetingSummaryPrompt}\n\nHier is de transcriptie:\n\n${text}`
           }],
-          text: {
-            format: {
-              type: "text"
-            }
-          },
-          reasoning: {
-            effort: "medium"
-          },
-          tools: [],
-          store: true
+          text: { format: { type: "text" } },
+          reasoning: { effort: "medium" },
+          tools: [], store: true
         });
-
-        // Extract the summary
         summary = response.output_text || '';
       } catch (innerError) {
         console.error("First attempt failed:", innerError);
-        
-        // If the first attempt failed, try with empty input and use system message
         try {
+          // If the first attempt failed, try with empty input and use system message
           const response = await openai.responses.create({
-            model: "o3-mini",
-            input: [],
+            model: "o3-mini", input: [],
             instructions: `${meetingSummaryPrompt}\n\nHier is de transcriptie:\n\n${text}`,
-            text: {
-              format: {
-                type: "text"
-              }
-            },
-            reasoning: {
-              effort: "medium"
-            },
-            tools: [],
-            store: true
+            text: { format: { type: "text" } },
+            reasoning: { effort: "medium" },
+            tools: [], store: true
           });
-          
           summary = response.output_text || '';
         } catch (secondError) {
           console.error("Second attempt failed:", secondError);
-          
           // Try a third version with standard chat format as fallback
           const response = await openai.chat.completions.create({
             model: "gpt-4o-mini", // Fallback to gpt-4o-mini
             messages: [
-              { 
-                role: 'system', 
-                content: meetingSummaryPrompt
-              },
-              { 
-                role: 'user', 
-                content: `Hier is de transcriptie van een vergadering:\n\n${text}`
-              }
+              { role: 'system', content: meetingSummaryPrompt },
+              { role: 'user', content: `Hier is de transcriptie van een vergadering:\n\n${text}` }
             ],
             temperature: 0.3
           });
-          
           summary = response.choices[0].message.content || '';
         }
       }
@@ -126,24 +99,26 @@ Vat nu de volgende transcriptie samen:`;
       const response = await openai.chat.completions.create({
         model: model,
         messages: [
-          { 
-            role: 'system', 
-            content: meetingSummaryPrompt
-          },
-          { 
-            role: 'user', 
-            content: `Hier is de transcriptie van een vergadering:\n\n${text}`
-          }
+          { role: 'system', content: meetingSummaryPrompt },
+          { role: 'user', content: `Hier is de transcriptie van een vergadering:\n\n${text}` }
         ],
         temperature: temperature
       });
-
       summary = response.choices[0].message.content || '';
     }
+    // --- End Get summary from OpenAI ---
 
-    outputTokenCount = countTokens(summary);
+    // --- Convert Markdown to HTML ---
+    marked.setOptions({
+      gfm: true,    // Enable GitHub Flavored Markdown (tables, etc.)
+      breaks: true, // Convert single line breaks to <br>
+      // Consider adding a sanitizer if needed in the future
+    });
+    const summaryHtml = await marked.parse(summary || ''); // Use async parse
+    // --- End Convert Markdown to HTML ---
 
-    // Calculate costs
+    // Calculate costs based on raw summary tokens
+    const outputTokenCount = countTokens(summary);
     const cost = calculateTextCost(
       inputTokenCount,
       outputTokenCount,
@@ -151,9 +126,9 @@ Vat nu de volgende transcriptie samen:`;
       selectedModel.outputCost
     );
 
-    // Return the summary and usage info
+    // Return the HTML summary and usage info
     return NextResponse.json({
-      summary,
+      summaryHtml, // Return HTML version
       usage: {
         model: selectedModel.name,
         inputTokens: inputTokenCount,
@@ -164,27 +139,23 @@ Vat nu de volgende transcriptie samen:`;
     });
   } catch (error) {
     console.error('Error generating summary:', error);
-    
-    // Detailed error logging
+
+    // Detailed error logging (keep existing)
     if (error instanceof Error) {
       console.error('Error name:', error.name);
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
-      
-      // Try to extract more details
       const anyError = error as any;
       if (anyError.response) {
         console.error('Response data:', anyError.response.data);
         console.error('Response status:', anyError.response.status);
       }
     }
-    
-    // Provide a meaningful error response
+
+    // Provide a meaningful error response (keep existing)
     let errorMessage = 'Er is een fout opgetreden bij het genereren van de samenvatting';
     let statusCode = 500;
-    
     if (error instanceof Error) {
-      // Extract a user-friendly error message
       if (error.message.includes('timeout')) {
         errorMessage = 'De aanvraag duurde te lang. Probeer een kleinere transcriptie.';
         statusCode = 504;
@@ -192,18 +163,17 @@ Vat nu de volgende transcriptie samen:`;
         errorMessage = `API parameter fout: ${error.message}. Probeer een ander model.`;
         statusCode = 400;
       } else {
-        // Include part of the actual error for debugging
         errorMessage = `Fout: ${error.message.substring(0, 100)}...`;
       }
     }
-    
-    // Return error response
+
+    // Return error response (keep existing)
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: errorMessage,
         suggestion: "Probeer gpt-4o-mini als alternatief, dat werkt betrouwbaarder."
       }),
-      { 
+      {
         status: statusCode,
         headers: { 'Content-Type': 'application/json' }
       }
