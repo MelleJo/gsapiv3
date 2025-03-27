@@ -4,8 +4,8 @@
 import React, { useRef, useState, forwardRef, HTMLAttributes, useEffect } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { motion, MotionProps } from 'framer-motion';
+import { upload } from '@vercel/blob/client'; // Import the upload function
 import AudioConverter from './AudioConverter'; // Assuming path is correct
-// Remove EnhancedTranscriber import if it was here
 import { formatBytes } from '@/lib/enhancedAudioChunker'; // Ensure path is correct
 import { type PutBlobResult } from '@vercel/blob'; // Import PutBlobResult
 
@@ -171,70 +171,32 @@ export default function FileUploader({
 
     try {
       // 1. Get the upload URL from our backend
-       setStatusMessage('Upload locatie aanvragen...');
-       const presignedResponse = await fetch('/api/upload-blob', {
-         method: 'POST',
-         headers: { 'content-type': 'application/json' },
-         body: JSON.stringify({ filename: fileToUpload.name }),
-       });
+      setStatusMessage(`Uploaden naar cloud opslag (${formatBytes(fileToUpload.size)})...`);
 
-       if (!presignedResponse.ok) {
-         const errorData = await presignedResponse.json();
-         throw new Error(`Kon upload URL niet krijgen: ${errorData.error || presignedResponse.statusText}`);
-       }
+      const newBlob = await upload(
+        fileToUpload.name, // Pass filename
+        fileToUpload,      // Pass file object
+        {
+          access: 'public', // Set access level
+          handleUploadUrl: '/api/upload-blob', // Backend endpoint
+          // Optional: Pass clientPayload if needed by backend
+          // clientPayload: JSON.stringify({ customData: 'example' }),
+          onUploadProgress: (progress) => {
+            setUploadProgress(progress);
+            setStatusMessage(`Uploaden... (${progress}%)`);
+          },
+        }
+      );
 
-       const blobInfo = (await presignedResponse.json()) as PutBlobResult;
-       console.log("Received blob info for upload:", blobInfo);
-
-       // 2. Upload the file directly to Vercel Blob using PUT
-       setStatusMessage(`Uploaden naar cloud opslag (${formatBytes(fileToUpload.size)})...`);
-
-       const xhr = new XMLHttpRequest();
-       xhr.open('PUT', blobInfo.url, true);
-
-       // Set headers if needed (often included in presigned URL)
-       xhr.setRequestHeader('Content-Type', fileToUpload.type || 'application/octet-stream');
-        // Vercel Blob presigned URLs usually don't require extra auth headers
-
-       // Track progress
-       xhr.upload.onprogress = (event) => {
-         if (event.lengthComputable) {
-           const progress = Math.round((event.loaded / event.total) * 100);
-           setUploadProgress(progress);
-           setStatusMessage(`Uploaden... (${progress}%)`);
-         }
-       };
-
-       // Handle completion
-       xhr.onload = () => {
-         if (xhr.status >= 200 && xhr.status < 300) {
-           console.log('✅ Upload naar Vercel Blob voltooid.');
-           setUploading(false);
-           setStatusMessage('Upload voltooid!');
-           // Pass the full blob result (including downloadUrl) to the parent
-           onFileUploadComplete(blobInfo);
-         } else {
-           console.error('Blob upload failed:', xhr.status, xhr.responseText);
-           setError(`Upload mislukt: ${xhr.statusText || `Serverfout ${xhr.status}`}`);
-           setStatusMessage('Upload mislukt.');
-           setUploading(false);
-         }
-       };
-
-       // Handle errors
-       xhr.onerror = () => {
-         console.error('Blob upload network error.');
-         setError('Upload mislukt: Netwerkfout.');
-         setStatusMessage('Upload mislukt.');
-         setUploading(false);
-       };
-
-       xhr.send(fileToUpload);
+      console.log('✅ Upload naar Vercel Blob voltooid:', newBlob);
+      setStatusMessage('Upload voltooid!');
+      onFileUploadComplete(newBlob); // Pass the result from upload()
 
     } catch (err: any) {
       console.error('Fout tijdens upload proces:', err);
-      setError(`Fout: ${err.message}`);
-      setStatusMessage('Upload voorbereiding mislukt.');
+      // Use the error message from the upload function if available
+      setError(`Fout: ${err.message || 'Onbekende uploadfout'}`);
+      setStatusMessage('Upload mislukt.');
       setUploading(false);
     }
   };
