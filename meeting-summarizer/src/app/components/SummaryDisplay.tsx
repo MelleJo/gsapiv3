@@ -181,29 +181,9 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
-        }
-
-        /* Optional: Add some basic table styling within prose if needed */
-        .prose table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 1em;
-          margin-bottom: 1em;
-        }
-        .prose th, .prose td {
-          border: 1px solid #e5e7eb; /* gray-200 */
-          padding: 0.5em 1em;
-        }
-        .prose th {
-          background-color: #f9fafb; /* gray-50 */
-          font-weight: 600;
-          text-align: left;
-        }
-        .prose tr:nth-child(even) {
-          background-color: #f9fafb; /* gray-50 */
-        }
-      `}</style>
-    </MotionDiv>
-  );
+           background: #9ca3af;
+         }
+       `}</style>
+     </MotionDiv>
+   );
 }
