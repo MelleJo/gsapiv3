@@ -99,10 +99,9 @@ export default function FinalScreen({
       <div className="grid grid-cols-1 gap-8">
       {/* Summary section - Prominent and primary */}
       <div className="mb-6">
-        {/* Pass summaryHtml instead of summary */}
-        <SummaryDisplay summaryHtml={summaryHtml} isLoading={isSummarizing} />
+        {/* Pass summaryHtml for display AND raw summary for copy action */}
+        <SummaryDisplay summary={summary} summaryHtml={summaryHtml} isLoading={isSummarizing} />
       </div>
-
       {/* Summary actions */}
       {/* Check summaryHtml for existence */}
       {summaryHtml && !isSummarizing && (
