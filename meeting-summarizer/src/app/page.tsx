@@ -216,6 +216,10 @@ export default function Home() {
         }
       }, 1000);
       
+      // Get any transcription segments from client-side transcription
+      // We'll pass these to the API to avoid duplicating work
+      const clientTranscriptions = (window as any).transcriptionSegments || [];
+      
       // Call the API
       const response = await fetch('/api/transcribe', {
         method: 'POST',
@@ -227,7 +231,8 @@ export default function Home() {
           originalFileName: blob.originalName,
           fileType: blob.contentType,
           fileSize: blob.size,
-          model: settings.transcriptionModel
+          model: settings.transcriptionModel,
+          transcriptionSegments: clientTranscriptions
         })
       });
       

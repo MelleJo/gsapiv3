@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { splitAudioBlob, joinTranscriptions } from '@/lib/audioChunker';
-import { upload } from '@vercel/blob/client';
-import { withTimeout } from '@/lib/utils';
 
 interface SegmentedTranscriberProps {
   audioFile: File | null;
@@ -15,17 +13,16 @@ interface SegmentedTranscriberProps {
 
 interface SegmentStatus {
   id: number;
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error';
-  blobUrl?: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
   transcription?: string;
   error?: string;
   progress: number;
   retries: number;
 }
 
-// Configuration constants - using much smaller segments to avoid timeouts
+// Configuration constants
 const MAX_RETRIES = 3;
-const SEGMENT_SIZE = 1 * 1024 * 1024; // 1MB segments for better reliability with API timeouts
+const SEGMENT_SIZE = 1 * 1024 * 1024; // 1MB segments for better reliability
 const CONCURRENT_LIMIT = 2; // Process 2 segments at a time
 const TIMEOUT_PER_SEGMENT = 90 * 1000; // 90 seconds per segment
 const DELAY_BETWEEN_SEGMENTS = 2000; // 2 seconds between segments
@@ -51,50 +48,27 @@ export default function SegmentedTranscriber({
     );
   }, []);
 
-  // Process a single segment
+  // Process a single segment using direct transcription
   const processSegment = useCallback(async (blob: Blob, segmentId: number, originalFileName: string): Promise<void> => {
     try {
-      // Mark segment as uploading
-      updateSegmentStatus(segmentId, { status: 'uploading', progress: 10 });
-      
-      // Create a unique name for this segment
-      const segmentName = `segment_${segmentId}_${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      
-      // First upload the segment to blob storage
-      const segmentBlob = await upload(segmentName, blob, {
-        access: 'public',
-        handleUploadUrl: '/api/client-upload',
-        onUploadProgress: (progress) => {
-          updateSegmentStatus(segmentId, { 
-            progress: 10 + Math.round(progress.percentage * 0.4) 
-          });
-        }
-      });
-      
       // Mark segment as processing
-      updateSegmentStatus(segmentId, { 
-        status: 'processing', 
-        blobUrl: segmentBlob.url,
-        progress: 50
-      });
+      updateSegmentStatus(segmentId, { status: 'processing', progress: 10 });
       
-      // Now send it to our API for transcription
-      const segmentResponse = await withTimeout(
-        fetch('/api/transcribe-segment', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            blobUrl: segmentBlob.url,
-            fileName: segmentName,
-            segmentId,
-            model
-          })
-        }),
-        TIMEOUT_PER_SEGMENT,
-        `Segment ${segmentId} processing timed out`
-      );
+      // Create FormData for the direct upload
+      const formData = new FormData();
+      formData.append('audio', blob);
+      formData.append('chunkIndex', segmentId.toString());
+      formData.append('fileName', `segment_${segmentId}_${originalFileName}`);
+      formData.append('model', model);
+      
+      // Send directly to our new API endpoint
+      updateSegmentStatus(segmentId, { progress: 50 });
+      
+      // Now send it to our direct transcription API
+      const segmentResponse = await fetch('/api/direct-transcribe', {
+        method: 'POST',
+        body: formData
+      });
       
       // Check for API error responses
       if (!segmentResponse.ok) {
@@ -319,7 +293,7 @@ export default function SegmentedTranscriber({
                         segment.status === 'error' ? 'bg-red-500' : 
                         segment.status === 'completed' ? 'bg-green-500' : 
                         segment.status === 'processing' ? 'bg-blue-400' :
-                        segment.status === 'uploading' ? 'bg-yellow-400' : 'bg-gray-300'
+                        'bg-gray-300'
                       }`}
                       style={{ width: `${segment.progress}%` }}
                     ></div>
@@ -327,7 +301,6 @@ export default function SegmentedTranscriber({
                 </div>
                 <div className="w-28 flex-shrink-0 text-xs ml-2 text-neutral-500">
                   {segment.status === 'pending' && 'Wachtend...'}
-                  {segment.status === 'uploading' && 'Uploaden...'}
                   {segment.status === 'processing' && 'Verwerken...'}
                   {segment.status === 'completed' && 'Voltooid'}
                   {segment.status === 'error' && (

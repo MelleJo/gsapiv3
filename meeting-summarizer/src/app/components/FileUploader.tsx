@@ -171,42 +171,45 @@ export default function FileUploader({
     }
   };
 
-  // Start the transcription and processing flow
-  const startProcess = () => {
-    if (!selectedFile && !convertedFile) {
-      setError('Geen bestand geselecteerd');
-      return;
-    }
+// Replace the current startProcess function in FileUploader.tsx with this:
 
-    setError('');
+// Start the transcription and processing flow
+const startProcess = () => {
+  if (!selectedFile && !convertedFile) {
+    setError('Geen bestand geselecteerd');
+    return;
+  }
+
+  setError('');
+  
+  // Get file extension
+  const fileToProcess = convertedFile || selectedFile;
+  if (!fileToProcess) return;
+  
+  const fileExt = fileToProcess.name.split('.').pop()?.toLowerCase() || '';
+  
+  // Check if we should convert this file
+  const needsConversion = 
+    ENABLE_FFMPEG_CONVERSION && 
+    // Always convert non-MP3 files
+    (fileExt !== 'mp3' || 
+     // Also convert large MP3 files for optimization
+     (fileExt === 'mp3' && fileToProcess.size > 20 * 1024 * 1024));
+  
+  if (needsConversion && !convertedFile) {
+    setIsConverting(true);
+    setConversionProgress(0);
+  } else {
+    // Start transcription process using enhanced transcriber directly
+    // without Vercel Blob upload step
+    setIsTranscribing(true);
     
-    // Get file extension
-    const fileToProcess = convertedFile || selectedFile;
-    if (!fileToProcess) return;
-    
-    const fileExt = fileToProcess.name.split('.').pop()?.toLowerCase() || '';
-    
-    // Check if we should convert this file
-    const needsConversion = 
-      ENABLE_FFMPEG_CONVERSION && 
-      // Always convert non-MP3 files
-      (fileExt !== 'mp3' || 
-       // Also convert large MP3 files for optimization
-       (fileExt === 'mp3' && fileToProcess.size > 20 * 1024 * 1024));
-    
-    if (needsConversion && !convertedFile) {
-      setIsConverting(true);
-      setConversionProgress(0);
-    } else {
-      // Start transcription process using our enhanced transcriber
-      setIsTranscribing(true);
-      
-      // Notify parent that transcription is starting
-      if (onTranscriptionStart) {
-        onTranscriptionStart();
-      }
+    // Notify parent that transcription is starting
+    if (onTranscriptionStart) {
+      onTranscriptionStart();
     }
-  };
+  }
+}
 
   // Handle drag events
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
