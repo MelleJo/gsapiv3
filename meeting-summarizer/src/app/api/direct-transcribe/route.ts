@@ -2,8 +2,15 @@
 import { NextResponse } from 'next/server';
 import openai from '@/lib/openai';
 import { formatBytes } from '@/lib/enhancedAudioChunker';
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "100mb",
+    },
+  },
+};
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const maxDuration = 720; // 12 minutes (720 seconds) - maximum for Fluid Compute
 
 // Maximum file size to accept (19MB to stay under OpenAI's 20MB limit)

@@ -6,10 +6,10 @@
  */
 
 // Constants optimized for maximum Fluid Compute timeouts
-export const OPENAI_MAX_SIZE_LIMIT = 19 * 1024 * 1024; // 19MB to stay safely under OpenAI's 20MB limit
+export const OPENAI_MAX_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB to satisfy Vercel's payload limit
 export const RECOMMENDED_CHUNK_DURATION = 480; // seconds (8 minutes) to safely fit within the 720s function limit
 export const MAX_CHUNK_SIZE = OPENAI_MAX_SIZE_LIMIT; // Never exceed OpenAI's limit
-export const TARGET_WAV_SIZE = 15 * 1024 * 1024; // Target 15MB WAV files to allow some room for overhead
+export const TARGET_WAV_SIZE = 3 * 1024 * 1024; // Target 3MB WAV files to ensure payload is under Vercel's limit
 export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
 export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time to maximize resources for each chunk
 export const DEFAULT_SAMPLE_RATE = 16000; // 16kHz is sufficient for speech recognition and reduces file size
@@ -68,6 +68,10 @@ export async function createAudioChunks(
     const duration = audioBuffer.duration;
     const sampleRate = audioBuffer.sampleRate;
     const numberOfChannels = audioBuffer.numberOfChannels;
+    // Adjust target duration based on estimated WAV size to ensure output is under the payload limit.
+    const estimatedWavSizePerSecond = sampleRate * numberOfChannels * 2; // 16-bit PCM = 2 bytes per sample
+    const computedTargetDuration = TARGET_WAV_SIZE / estimatedWavSizePerSecond;
+    targetDuration = Math.min(targetDuration, computedTargetDuration);
     
     // Calculate number of chunks needed
     const numChunks = Math.ceil(duration / targetDuration);
@@ -208,50 +212,16 @@ export async function createAudioChunks(
         console.log(`Final chunk ${i+1} settings: ${currentChannels} channels, ${currentSampleRate}Hz sample rate, size: ${formatBytes(chunkBlob.size)}`);
       }
       
-      // If still too large after 3 attempts, we need to split further
+      // If still too large after downsampling attempts, recursively split the chunk.
       if (chunkBlob.size > OPENAI_MAX_SIZE_LIMIT) {
-        console.warn(`Chunk ${i+1} still too large (${formatBytes(chunkBlob.size)}) after downsampling. Splitting further.`);
-        
-        // Split this large chunk into two parts
-        const midPoint = Math.floor(chunkDuration / 2);
-        const firstHalfEndTime = startTime + midPoint;
-        
-        // Recursively process the two halves (simplified - not actually recursive to avoid complexity)
-        // In a real implementation, we would call createAudioChunks recursively
-        
-        // Instead, we'll use a simpler approach - just make the full chunk smaller
-        const reducedDuration = chunkDuration * 0.75; // Take 75% of the chunk
-        const newEndTime = startTime + reducedDuration;
-        
-        // Create a smaller chunk buffer
-        const reducedBuffer = audioContext.createBuffer(
-          1, // Always use mono for these problem cases
-          Math.ceil(reducedDuration * DEFAULT_SAMPLE_RATE),
-          DEFAULT_SAMPLE_RATE
-        );
-        
-        // Copy just the first part of the audio
-        const reducedData = reducedBuffer.getChannelData(0);
-        const channelData = audioBuffer.getChannelData(0);
-        const startOffset = Math.floor(startTime * sampleRate);
-        const copyLength = reducedData.length;
-        
-        // Resample while copying
-        const ratio = sampleRate / DEFAULT_SAMPLE_RATE;
-        for (let j = 0; j < copyLength; j++) {
-          const sourceIndex = startOffset + Math.min(Math.floor(j * ratio), channelData.length - startOffset - 1);
-          if (sourceIndex < channelData.length) {
-            reducedData[j] = channelData[sourceIndex];
-          }
-        }
-        
-        // Convert to WAV at lowest quality
-        audioData = audioBufferToWav(reducedBuffer);
-        chunkBlob = new Blob([audioData], { type: 'audio/wav' });
-        
-        console.log(`Created reduced chunk ${i+1}: ${formatBytes(chunkBlob.size)} (${Math.round(reducedDuration)}s duration)`);
-        
-        // The next iteration will handle the remaining portion
+        console.warn(`Chunk ${i+1} still too large (${formatBytes(chunkBlob.size)}) after downsampling. Recursively splitting chunk.`);
+        // Create a File from the oversized blob.
+        const chunkFile = new File([chunkBlob], `chunk_${i+1}.wav`, { type: 'audio/wav' });
+        // Recursively call createAudioChunks with a reduced target duration.
+        const subChunks = await createAudioChunks(chunkFile, targetDuration / 2);
+        // Append all sub-chunks to our chunks array.
+        chunks.push(...subChunks);
+        continue; // Skip normal processing of this chunk.
       }
       
       chunks.push(chunkBlob);
