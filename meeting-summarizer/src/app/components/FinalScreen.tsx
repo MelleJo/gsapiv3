@@ -15,7 +15,7 @@ const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
 MotionDiv.displayName = 'MotionDiv';
 
 interface FinalScreenProps {
-  summary: string;
+  summaryHtml: string; // Changed from summary
   transcription: string;
   audioFileName: string;
   isSummarizing: boolean;
@@ -33,7 +33,7 @@ interface FinalScreenProps {
 }
 
 export default function FinalScreen({
-  summary,
+  summaryHtml, // Changed from summary
   transcription,
   audioFileName,
   isSummarizing,
@@ -95,18 +95,20 @@ export default function FinalScreen({
       
       {/* Main content area */}
       <div className="grid grid-cols-1 gap-8">
-        {/* Summary section - Prominent and primary */}
-        <div className="mb-6">
-          <SummaryDisplay summary={summary} isLoading={isSummarizing} />
-        </div>
-        
-        {/* Summary actions */}
-        {summary && !isSummarizing && (
-          <div className="mb-8">
-            <SummaryActions
-              summary={summary}
-              transcription={transcription}
-              onRefinedSummary={onRefinedSummary}
+      {/* Summary section - Prominent and primary */}
+      <div className="mb-6">
+        {/* Pass summaryHtml instead of summary */}
+        <SummaryDisplay summaryHtml={summaryHtml} isLoading={isSummarizing} />
+      </div>
+
+      {/* Summary actions */}
+      {/* Check summaryHtml for existence */}
+      {summaryHtml && !isSummarizing && (
+        <div className="mb-8">
+          <SummaryActions
+            summary={summaryHtml} // Pass summaryHtml here too (or adjust SummaryActions if needed)
+            transcription={transcription}
+            onRefinedSummary={onRefinedSummary}
               onOpenEmailModal={onOpenEmailModal}
             />
           </div>
