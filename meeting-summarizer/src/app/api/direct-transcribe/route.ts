@@ -124,20 +124,45 @@ export async function POST(request: Request) {
         transcriptionOptions.prompt = prompt;
     }
 
-    // Call OpenAI API - it returns a Transcription object even with response_format: 'text'
+    // Call OpenAI API
     const transcription = await openai.audio.transcriptions.create(transcriptionOptions);
 
-    // Access the actual text from the 'text' property
-    console.log(`✅ Transcription received from OpenAI (${transcription.text.length} characters).`);
+    // --- Debugging: Log the entire response ---
+    console.log('🔍 Full OpenAI Transcription Response:', JSON.stringify(transcription, null, 2));
+    // --- End Debugging ---
 
-    // 4. Return the transcription text
-    return NextResponse.json({
-        success: true,
-        transcription: transcription.text // Return the text property
-    });
+    // Check if the response and the text property exist and are valid
+    if (transcription && typeof transcription.text === 'string') {
+      // Access the actual text from the 'text' property
+      console.log(`✅ Transcription received from OpenAI (${transcription.text.length} characters).`);
+
+      // 4. Return the transcription text
+      return NextResponse.json({
+          success: true,
+          transcription: transcription.text // Return the text property
+      });
+    } else {
+      // Handle unexpected response structure
+      console.error('❌ Unexpected OpenAI response structure:', transcription);
+      throw new Error('Unexpected response structure received from OpenAI transcription API.');
+    }
 
   } catch (error: any) {
+    // --- Debugging: Log detailed error info ---
     console.error('❌ Error during transcription process:', error);
+    if (error instanceof Error) {
+        console.error('Error Name:', error.name);
+        console.error('Error Message:', error.message);
+        console.error('Error Stack:', error.stack);
+    }
+    if (error.response) { // Axios-like error structure
+        console.error('Error Response Status:', error.response.status);
+        console.error('Error Response Data:', error.response.data);
+    } else if (error.status) { // OpenAI SDK v4 error structure
+        console.error('Error Status:', error.status);
+        console.error('Error Details:', error.error);
+    }
+    // --- End Debugging ---
 
     let errorMessage = 'Failed to transcribe audio';
     let statusCode = 500;
