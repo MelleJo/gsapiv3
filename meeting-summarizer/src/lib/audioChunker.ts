@@ -6,13 +6,12 @@
  */
 
 // Maximum size limit for a single chunk in bytes (reduced from 25MB to 10MB for greater reliability)
-export const SIZE_LIMIT = 10 * 1024 * 1024;
+// src/lib/audioChunker.ts
+// Update these constants
+export const SIZE_LIMIT = 19 * 1024 * 1024; // 19MB chunks
+export const DEFAULT_CHUNK_SIZE = 19 * 1024 * 1024; // 19MB chunks
+export const SEGMENT_SIZE = 19 * 1024 * 1024; // 19MB segments
 
-// Default chunk size for binary chunking (using smaller chunks to avoid timeouts)
-export const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks are more reliable
-
-// Segment size for multi-step processing
-export const SEGMENT_SIZE = 5 * 1024 * 1024; // 5MB segments
 
 // Maximum duration for processing a single chunk (in seconds)
 export const CHUNK_TIMEOUT = 120; // 2 minutes per chunk, leaving buffer for 3 minute limit

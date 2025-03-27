@@ -7,6 +7,7 @@ import {
   joinTranscriptions,
   formatBytes, 
   ChunkStatus,
+  OPENAI_MAX_SIZE_LIMIT,
   MAX_CONCURRENT_UPLOADS,
   MAX_CLIENT_TIMEOUT
 } from '@/lib/enhancedAudioChunker';
@@ -97,7 +98,17 @@ export default function EnhancedTranscriber({
       
       console.log(`Processing audio file: ${file.name}, size: ${formatBytes(file.size)}`);
       
-      // Split the file into chunks
+      // If file is under the size limit, send directly to the API (no chunking)
+      if (file.size <= OPENAI_MAX_SIZE_LIMIT) {
+        console.log(`Audio file size (${formatBytes(file.size)}) is smaller than Whisper API limit. Processing as a single file.`);
+        
+        if (onProgress) onProgress(10, 'Processing audio as a single file...');
+        
+        await processWholeFile(file);
+        return;
+      }
+      
+      // For larger files, split into chunks
       setCurrentStage('chunking');
       if (onProgress) onProgress(5, 'Splitting audio into segments...');
       
@@ -118,7 +129,7 @@ export default function EnhancedTranscriber({
       // Process all chunks - use direct transcription
       setCurrentStage('transcribing');
       
-      // Process chunks one by one (sequentially to avoid memory issues)
+      // Process chunks with controlled concurrency
       const transcriptions = await processChunksSequentially(audioChunks, file.name);
       
       // Combine the transcriptions
@@ -138,6 +149,46 @@ export default function EnhancedTranscriber({
       onError(error instanceof Error ? error.message : 'Unknown error during transcription');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Process a single file without chunking
+  const processWholeFile = async (file: File): Promise<void> => {
+    try {
+      if (onProgress) onProgress(20, 'Transcribing audio file...');
+      
+      setCurrentStage('transcribing');
+      
+      // Create FormData for the direct upload
+      const formData = new FormData();
+      formData.append('audio', file);
+      formData.append('fileName', file.name);
+      formData.append('model', model);
+      
+      // Call the direct transcription API
+      const response = await fetch('/api/direct-transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Transcription failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      if (onProgress) onProgress(100, 'Transcription complete!');
+      setCurrentStage('completed');
+      
+      onTranscriptionComplete(result.transcription);
+      
+    } catch (error) {
+      console.error('Error processing whole file:', error);
+      throw error;
     }
   };
 
@@ -249,8 +300,6 @@ export default function EnhancedTranscriber({
           body: formData,
         });
         
-        // Inside EnhancedTranscriber.tsx, in the transcribeChunkDirect function:
-
         // Handle response errors with better fallback strategy
         if (!response.ok) {
           let errorMessage = `HTTP error ${response.status}`;
@@ -267,14 +316,12 @@ export default function EnhancedTranscriber({
           // If we get a 404 or 405, try the regular Blob storage path as fallback
           if (response.status === 404 || response.status === 405) {
             console.log('Direct transcription endpoint not found, falling back to blob upload...');
-            // Implement fallback to blob storage path here
-            
-            // For now, throw a clear error
             throw new Error('Direct transcription API not available. Please update your deployment with the direct-transcribe API endpoint.');
           }
           
           throw new Error(errorMessage);
         }
+        
         // Parse response
         const result = await response.json();
         
@@ -349,7 +396,7 @@ export default function EnhancedTranscriber({
         <div className="transcription-progress">
           <div className="mb-2 text-sm text-neutral-600">
             {currentStage === 'chunking' && 'Splitting audio into segments...'}
-            {currentStage === 'transcribing' && `Transcribing segments (${chunkStatuses.filter(s => s.status === 'completed').length}/${chunkStatuses.length})...`}
+            {currentStage === 'transcribing' && `Transcribing ${chunks.length > 1 ? `segments (${chunkStatuses.filter(s => s.status === 'completed').length}/${chunkStatuses.length})` : 'audio'}...`}
             {currentStage === 'combining' && 'Combining transcriptions...'}
           </div>
           
@@ -361,7 +408,7 @@ export default function EnhancedTranscriber({
             ></div>
           </div>
           
-          {/* Segment progress indicators (optional) */}
+          {/* Segment progress indicators (only show for multiple chunks) */}
           {chunkStatuses.length > 1 && (
             <div className="flex flex-wrap gap-1">
               {chunkStatuses.map((status) => (

@@ -5,16 +5,17 @@
  * This approach splits audio directly in the browser for improved reliability
  */
 
-// Constants optimized for maximum Fluid Compute timeouts
-export const OPENAI_MAX_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB to satisfy Vercel's payload limit
-export const RECOMMENDED_CHUNK_DURATION = 480; // seconds (8 minutes) to safely fit within the 720s function limit
+
+
+export const OPENAI_MAX_SIZE_LIMIT = 19 * 1024 * 1024; // 19MB (safer than 25MB)
+export const RECOMMENDED_CHUNK_DURATION = 900; // seconds (15 minutes)
 export const MAX_CHUNK_SIZE = OPENAI_MAX_SIZE_LIMIT; // Never exceed OpenAI's limit
-export const TARGET_WAV_SIZE = 3 * 1024 * 1024; // Target 3MB WAV files to ensure payload is under Vercel's limit
-export const MIN_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB minimum size to ensure chunking for medium-sized files
+export const TARGET_WAV_SIZE = 18 * 1024 * 1024; // Target 18MB WAV files
+export const MIN_CHUNK_SIZE = 25 * 1024 * 1024; // Only chunk files over 25MB
+
 export const MAX_CONCURRENT_UPLOADS = 1; // Process one chunk at a time to maximize resources for each chunk
 export const DEFAULT_SAMPLE_RATE = 16000; // 16kHz is sufficient for speech recognition and reduces file size
 export const MAX_CLIENT_TIMEOUT = 700 * 1000; // 11.67 minutes in milliseconds, near maximum Fluid Compute limit (720 seconds)
-
 // Chunk status tracking
 export interface ChunkStatus {
   id: number;

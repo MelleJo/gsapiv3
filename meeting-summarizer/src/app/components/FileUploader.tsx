@@ -113,24 +113,35 @@ export default function FileUploader({
   };
 
   // Handle conversion complete
-  const handleConversionComplete = (convertedFile: File) => {
-    console.log(`Conversion complete: ${convertedFile.name} (${formatBytes(convertedFile.size)})`);
-    setIsConverting(false);
-    setFileName(convertedFile.name);
-    setConvertedFile(convertedFile);
-    
-    // Update file info after conversion
-    setFileInfo(prev => {
-      if (prev) {
-        return {
-          ...prev,
-          format: 'MP3', // Always MP3 after conversion
-          size: formatBytes(convertedFile.size)
-        };
-      }
-      return prev;
-    });
-  };
+  // In FileUploader.tsx, update handleConversionComplete:
+
+// Handle conversion complete
+const handleConversionComplete = (convertedFile: File) => {
+  console.log(`Conversion complete: ${convertedFile.name} (${formatBytes(convertedFile.size)})`);
+  setIsConverting(false);
+  setFileName(convertedFile.name);
+  setConvertedFile(convertedFile);
+  
+  // Update file info after conversion
+  setFileInfo(prev => {
+    if (prev) {
+      return {
+        ...prev,
+        format: 'MP3', // Always MP3 after conversion
+        size: formatBytes(convertedFile.size)
+      };
+    }
+    return prev;
+  });
+  
+  // IMPORTANT: Start transcription immediately after conversion
+  setIsTranscribing(true);
+  
+  // Notify parent that transcription is starting
+  if (onTranscriptionStart) {
+    onTranscriptionStart();
+  }
+}
 
   // Handle conversion error
   const handleConversionError = (errorMessage: string) => {
@@ -174,6 +185,9 @@ export default function FileUploader({
 // Replace the current startProcess function in FileUploader.tsx with this:
 
 // Start the transcription and processing flow
+// Replace the current startProcess function in FileUploader.tsx with this:
+
+// Start the transcription and processing flow
 const startProcess = () => {
   if (!selectedFile && !convertedFile) {
     setError('Geen bestand geselecteerd');
@@ -182,7 +196,7 @@ const startProcess = () => {
 
   setError('');
   
-  // Get file extension
+  // Get file to process
   const fileToProcess = convertedFile || selectedFile;
   if (!fileToProcess) return;
   

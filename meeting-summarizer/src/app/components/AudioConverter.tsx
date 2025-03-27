@@ -105,8 +105,41 @@ export default function AudioConverter({
       if (!file || !ffmpegRef.current || !isFFmpegLoaded) return;
 
       // Check file size for appropriate conversion settings
-      const isLargeFile = file.size > 50 * 1024 * 1024; // 50MB
-      const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+      // In the convertFile function in AudioConverter.tsx
+// Find the place where FFmpeg options are set and update:
+
+    // Check file size for appropriate conversion settings
+    const isLargeFile = file.size > 50 * 1024 * 1024; // 50MB
+    const isHugeFile = file.size > 100 * 1024 * 1024; // 100MB
+
+    // Common options, but more aggressive for larger files
+    const options = [
+      '-i', inputFileName,
+      '-vn', // No video
+      '-c:a', 'libmp3lame',
+      '-ac', '1', // Convert to mono
+    ];
+
+    // Add quality settings based on file size
+    if (isHugeFile) {
+      // Very aggressive settings for huge files
+      options.push(
+        '-ab', '32k', // Very low bitrate
+        '-ar', '16000', // 16kHz sample rate
+      );
+    } else if (isLargeFile) {
+      // Aggressive settings for large files
+      options.push(
+        '-ab', '48k', // Low bitrate for speech
+        '-ar', '22050', // Lower sample rate
+      );
+    } else {
+      // Standard settings for normal files
+      options.push(
+        '-ab', '64k', // Reasonable bitrate for speech
+        '-ar', '22050', // Lower sample rate for speech
+      );
+    }
       
       // Only skip if it's already an optimized MP3 file (under 10MB)
       const skipConversion = 
