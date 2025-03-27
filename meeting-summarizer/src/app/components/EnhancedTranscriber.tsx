@@ -249,18 +249,32 @@ export default function EnhancedTranscriber({
           body: formData,
         });
         
-        // Handle response errors
+        // Inside EnhancedTranscriber.tsx, in the transcribeChunkDirect function:
+
+        // Handle response errors with better fallback strategy
         if (!response.ok) {
           let errorMessage = `HTTP error ${response.status}`;
+          let retryable = response.status >= 500 || response.status === 429;
+          
           try {
             const errorData = await response.json();
             errorMessage = errorData.error || errorMessage;
+            retryable = errorData.retryable ?? retryable;
           } catch (e) {
             // Ignore JSON parsing errors
           }
+          
+          // If we get a 404 or 405, try the regular Blob storage path as fallback
+          if (response.status === 404 || response.status === 405) {
+            console.log('Direct transcription endpoint not found, falling back to blob upload...');
+            // Implement fallback to blob storage path here
+            
+            // For now, throw a clear error
+            throw new Error('Direct transcription API not available. Please update your deployment with the direct-transcribe API endpoint.');
+          }
+          
           throw new Error(errorMessage);
         }
-        
         // Parse response
         const result = await response.json();
         

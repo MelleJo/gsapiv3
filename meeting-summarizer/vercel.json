@@ -8,6 +8,10 @@
       "maxDuration": 720,
       "memory": 3008
     },
+    "src/app/api/direct-transcribe/route.ts": {
+      "maxDuration": 720,
+      "memory": 3008
+    },
     "src/app/api/client-upload/route.ts": {
       "maxDuration": 720,
       "memory": 3008
