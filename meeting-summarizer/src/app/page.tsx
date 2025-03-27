@@ -6,18 +6,17 @@ import { motion, AnimatePresence, MotionProps } from 'framer-motion';
 import React, { HTMLAttributes, forwardRef } from 'react';
 import FileUploader, { BlobFile as BlobFileInfo } from '@/app/components/FileUploader'; // Import BlobFile if exported
 import CustomAudioRecorder from '@/app/components/CustomAudioRecorder';
-// Removed imports for TranscriptionDisplay, TranscriptionProgress as they might not be needed here if pipeline shows progress
 import SummaryDisplay from '@/app/components/SummaryDisplay';
 import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
 import Notification, { NotificationType } from '@/app/components/Notification';
 import ProcessingPipeline, { PipelineStatus, PipelineStage } from './components/ProcessingPipeline'; // Import types
-// Removed SegmentedTranscriber import
 import PromptSelector from '@/app/components/PromptSelector';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { type PutBlobResult } from '@vercel/blob'; // Use Vercel Blob's result type
 import FinalScreen from '@/app/components/FinalScreen';
+import { marked } from 'marked'; // Import marked for client-side conversion
 
 // Create properly typed motion components (same as before)
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -25,19 +24,16 @@ const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
   <motion.div ref={ref} {...props} />
 ));
 MotionDiv.displayName = 'MotionDiv';
-// ... other motion components (MotionH1, MotionP, MotionButton) remain the same ...
 type MotionH1Props = HTMLAttributes<HTMLHeadingElement> & MotionProps;
 const MotionH1 = forwardRef<HTMLHeadingElement, MotionH1Props>((props, ref) => (
   <motion.h1 ref={ref} {...props} />
 ));
 MotionH1.displayName = 'MotionH1';
-
 type MotionPProps = HTMLAttributes<HTMLParagraphElement> & MotionProps;
 const MotionP = forwardRef<HTMLParagraphElement, MotionPProps>((props, ref) => (
   <motion.p ref={ref} {...props} />
 ));
 MotionP.displayName = 'MotionP';
-
 type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
   onClick?: () => void;
   disabled?: boolean;
@@ -484,19 +480,28 @@ export default function Home() {
   // Handle email modal
   const handleOpenEmailModal = () => setIsEmailModalOpen(true);
   const handleCloseEmailModal = () => setIsEmailModalOpen(false);
-  // Handle refined summary - NOTE: Assumes refined summary is Markdown, needs re-conversion
+
+  // Handle refined summary - Convert Markdown to HTML client-side
   const handleRefinedSummary = async (refinedMarkdownSummary: string) => {
       setSummary(refinedMarkdownSummary); // Update raw summary state
       showNotification('info', 'Samenvatting bijgewerkt, HTML versie genereren...');
-      // Need to convert this refined Markdown to HTML again
-      // Option 1: Call summarize API again (inefficient)
-      // Option 2: Create a dedicated markdown-to-html API endpoint
-      // Option 3: Do conversion client-side (requires marked library client-side)
-      // For now, just update raw summary and maybe show a message
-      // TODO: Implement HTML conversion for refined summary
-      setSummaryHtml('<p><i>HTML versie wordt gegenereerd... (Nog niet geïmplementeerd)</i></p>'); // Placeholder
-      showNotification('success', 'Samenvatting succesvol bijgewerkt (HTML versie volgt)');
+      try {
+        // Configure marked (ensure GFM and breaks are enabled)
+        marked.setOptions({
+          gfm: true,
+          breaks: true,
+        });
+        // Convert refined Markdown to HTML
+        const convertedHtml = await marked.parse(refinedMarkdownSummary || '');
+        setSummaryHtml(convertedHtml); // Update HTML state
+        showNotification('success', 'Samenvatting succesvol bijgewerkt');
+      } catch (error) {
+          console.error("Error converting refined summary to HTML:", error);
+          setSummaryHtml("<p><i>Fout bij converteren van bijgewerkte samenvatting naar HTML.</i></p>"); // Show error in display
+          showNotification('error', 'Kon bijgewerkte samenvatting niet naar HTML converteren.');
+      }
   };
+
   // Handle email notifications
   const handleEmailNotification = (success: boolean, message: string) => showNotification(success ? 'success' : 'error', message);
   // Show notification
