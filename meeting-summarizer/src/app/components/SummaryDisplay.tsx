@@ -147,10 +147,10 @@ export default function SummaryDisplay({ summary, summaryHtml, isLoading }: Summ
 
       {/* Content area - Render pre-generated HTML */}
       <div className="p-8">
-        <div ref={contentRef} className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-           {/* Apply prose styles DIRECTLY to the div rendering the HTML */}
+        {/* Add a specific class for targeting styles */}
+        <div ref={contentRef} className="summary-content max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+           {/* REMOVED prose class, render HTML directly */}
            <div
-             className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none"
              dangerouslySetInnerHTML={{ __html: summaryHtml }}
            />
          </div>
@@ -163,12 +163,42 @@ export default function SummaryDisplay({ summary, summaryHtml, isLoading }: Summ
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-         /* Basic table styling (applied directly to HTML elements via prose) */
-         /* Ensure prose styles are sufficient, otherwise add specific overrides here */
-         /* Example: Force borders if prose doesn't add them reliably */
-         .prose table { border-collapse: collapse; width: 100%; margin-top: 1em; margin-bottom: 1em; }
-         .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.5em 1em; vertical-align: top; text-align: left; }
-         .prose th { background-color: #f9fafb; font-weight: 600; }
+         /* Basic table styling targeting elements within .summary-content */
+         .summary-content table {
+           width: 100%;
+           border-collapse: collapse;
+           margin-top: 1em;
+           margin-bottom: 1em;
+           font-size: 0.875rem; /* Equivalent to text-sm */
+           line-height: 1.25rem;
+         }
+         .summary-content th,
+         .summary-content td {
+           border: 1px solid #e5e7eb; /* gray-200 */
+           padding: 0.5rem 0.75rem; /* Equivalent to py-2 px-3 */
+           vertical-align: top;
+           text-align: left;
+         }
+         .summary-content th {
+           background-color: #f9fafb; /* gray-50 */
+           font-weight: 600; /* Equivalent to font-semibold */
+           color: #374151; /* gray-700 */
+         }
+         .summary-content td {
+            color: #4b5563; /* gray-600 */
+         }
+         /* Add styles for other markdown elements if needed */
+         .summary-content p { margin-bottom: 1em; }
+         .summary-content ul, .summary-content ol { margin-left: 1.5em; margin-bottom: 1em; }
+         .summary-content li { margin-bottom: 0.25em; }
+         .summary-content h1, .summary-content h2, .summary-content h3, .summary-content h4 {
+             font-weight: 600; margin-top: 1.5em; margin-bottom: 0.5em;
+         }
+         .summary-content h2 { font-size: 1.25em; }
+         .summary-content h3 { font-size: 1.1em; }
+         .summary-content strong { font-weight: 600; }
+         .summary-content hr { border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+
        `}</style>
      </MotionDiv>
    );
