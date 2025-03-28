@@ -24,20 +24,20 @@ MotionButton.displayName = 'MotionButton';
 
 // --- Custom Components for Markdown Overrides ---
 // Add ReactNode type for children
-const MyTable = ({ children, ...props }: { children?: ReactNode }) => <table className="min-w-full border-collapse border border-gray-300 my-4 text-sm" {...props}>{children}</table>;
-const MyThead = ({ children, ...props }: { children?: ReactNode }) => <thead className="bg-gray-100" {...props}>{children}</thead>;
+const MyTable = ({ children, ...props }: { children?: ReactNode }) => <table className="min-w-full border-collapse border border-gray-300 my-6 text-sm rounded-lg overflow-hidden" {...props}>{children}</table>; // Added my-6, rounded-lg, overflow-hidden
+const MyThead = ({ children, ...props }: { children?: ReactNode }) => <thead className="bg-gray-200" {...props}>{children}</thead>; // Changed bg-gray-100 to bg-gray-200
 const MyTbody = ({ children, ...props }: { children?: ReactNode }) => <tbody {...props}>{children}</tbody>;
 const MyTr = ({ children, ...props }: { children?: ReactNode }) => <tr className="border-b border-gray-200 hover:bg-gray-50" {...props}>{children}</tr>;
-const MyTh = ({ children, ...props }: { children?: ReactNode }) => <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700" {...props}>{children}</th>;
-const MyTd = ({ children, ...props }: { children?: ReactNode }) => <td className="border border-gray-300 px-3 py-2 text-gray-600 align-top" {...props}>{children}</td>;
-const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="mb-4" {...props}>{children}</p>;
-const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-4" {...props}>{children}</ul>;
-const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-4" {...props}>{children}</ol>;
-const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-1" {...props}>{children}</li>;
-const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-xl font-semibold mt-6 mb-3 border-b pb-1" {...props}>{children}</h2>;
-const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-lg font-semibold mt-5 mb-2" {...props}>{children}</h3>;
-const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong className="font-semibold" {...props}>{children}</strong>;
-const MyHr = ({ ...props }) => <hr className="my-6 border-gray-300" {...props} />;
+const MyTh = ({ children, ...props }: { children?: ReactNode }) => <th className="border border-gray-300 px-4 py-3 text-left font-medium text-gray-800 bg-gray-100" {...props}>{children}</th>; // Adjusted padding, font, color, bg
+const MyTd = ({ children, ...props }: { children?: ReactNode }) => <td className="border border-gray-300 px-4 py-3 text-gray-700 align-middle" {...props}>{children}</td>; // Adjusted padding, color, alignment
+const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="mb-5" {...props}>{children}</p>; // Changed mb-4 to mb-5
+const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-5" {...props}>{children}</ul>; // Changed mb-4 to mb-5
+const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-5" {...props}>{children}</ol>; // Changed mb-4 to mb-5
+const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-2" {...props}>{children}</li>; // Changed mb-1 to mb-2
+const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-2xl font-semibold mt-8 mb-4 border-b-2 border-blue-200 pb-2 text-gray-800" {...props}>{children}</h2>; // Enhanced styling
+const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-xl font-medium mt-6 mb-3 text-gray-700" {...props}>{children}</h3>; // Enhanced styling
+const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong className="font-semibold text-gray-900" {...props}>{children}</strong>; // Added text color
+const MyHr = ({ ...props }) => <hr className="my-8 border-t border-gray-200" {...props} />; // Adjusted margin and border
 // --- End Custom Components ---
 
 
