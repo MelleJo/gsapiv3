@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react'; // Import useCallback
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
 import React, { HTMLAttributes, forwardRef } from 'react';
 
@@ -28,6 +28,7 @@ export default function SummaryActions({
   const [topicInput, setTopicInput] = useState<string>('');
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [isTranscriptCopied, setIsTranscriptCopied] = useState<boolean>(false); // State for copy feedback
 
   // Validate inputs before making API calls
   const validateInputs = () => {
@@ -178,6 +179,23 @@ export default function SummaryActions({
     }
   };
 
+  // Function to handle copying the transcript
+  const handleCopyTranscript = useCallback(() => {
+    if (!transcription) {
+      setError('Geen transcriptie beschikbaar om te kopiëren.');
+      return;
+    }
+    navigator.clipboard.writeText(transcription)
+      .then(() => {
+        setIsTranscriptCopied(true);
+        setTimeout(() => setIsTranscriptCopied(false), 2000); // Reset after 2 seconds
+      })
+      .catch(err => {
+        console.error('Failed to copy transcript: ', err);
+        setError('Kon transcriptie niet kopiëren naar klembord.');
+      });
+  }, [transcription]); // Dependency array includes transcription
+
   return (
     <div className="mb-8">
       <div className="bg-white rounded-2xl shadow-lg p-6">
@@ -231,7 +249,24 @@ export default function SummaryActions({
               )}
             </button>
           </div>
-          
+
+          {/* Copy Transcript Button */}
+          <div className="bg-neutral-50 rounded-xl p-4 hover:shadow-md transition-shadow">
+            <h3 className="text-md font-medium text-neutral-700 mb-2">Kopieer Transcript</h3>
+            <p className="text-neutral-600 text-sm mb-3">Kopieer de volledige transcriptie naar het klembord.</p>
+            <button
+              onClick={handleCopyTranscript}
+              disabled={isTranscriptCopied}
+              className={`w-full px-4 py-2 rounded-lg text-white font-medium transition-all ${
+                isTranscriptCopied
+                  ? 'bg-gray-500 cursor-default'
+                  : 'bg-gray-600 hover:bg-gray-700 hover:shadow-md'
+              }`}
+            >
+              {isTranscriptCopied ? 'Gekopieerd!' : 'Kopieer Transcript'}
+            </button>
+          </div>
+
           <div className="bg-neutral-50 rounded-xl p-4 hover:shadow-md transition-shadow">
             <h3 className="text-md font-medium text-neutral-700 mb-2">Verstuur per e-mail</h3>
             <p className="text-neutral-600 text-sm mb-3">Verstuur deze samenvatting als e-mail naar collega's of klanten.</p>
