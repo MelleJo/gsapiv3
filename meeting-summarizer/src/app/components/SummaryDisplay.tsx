@@ -1,9 +1,10 @@
 // src/app/components/SummaryDisplay.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
+import React, { HTMLAttributes, forwardRef, ReactNode } from 'react'; // Import ReactNode
+import Markdown from 'markdown-to-jsx'; // Import markdown-to-jsx
 
 // Define MotionDiv and MotionButton components
 type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
@@ -21,109 +22,53 @@ const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, re
 ));
 MotionButton.displayName = 'MotionButton';
 
+// --- Custom Components for Markdown Overrides ---
+// Add ReactNode type for children
+const MyTable = ({ children, ...props }: { children?: ReactNode }) => <table className="min-w-full border-collapse border border-gray-300 my-4 text-sm" {...props}>{children}</table>;
+const MyThead = ({ children, ...props }: { children?: ReactNode }) => <thead className="bg-gray-100" {...props}>{children}</thead>;
+const MyTbody = ({ children, ...props }: { children?: ReactNode }) => <tbody {...props}>{children}</tbody>;
+const MyTr = ({ children, ...props }: { children?: ReactNode }) => <tr className="border-b border-gray-200 hover:bg-gray-50" {...props}>{children}</tr>;
+const MyTh = ({ children, ...props }: { children?: ReactNode }) => <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-700" {...props}>{children}</th>;
+const MyTd = ({ children, ...props }: { children?: ReactNode }) => <td className="border border-gray-300 px-3 py-2 text-gray-600 align-top" {...props}>{children}</td>;
+const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="mb-4" {...props}>{children}</p>;
+const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-4" {...props}>{children}</ul>;
+const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-4" {...props}>{children}</ol>;
+const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-1" {...props}>{children}</li>;
+const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-xl font-semibold mt-6 mb-3 border-b pb-1" {...props}>{children}</h2>;
+const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-lg font-semibold mt-5 mb-2" {...props}>{children}</h3>;
+const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong className="font-semibold" {...props}>{children}</strong>;
+const MyHr = ({ ...props }) => <hr className="my-6 border-gray-300" {...props} />;
+// --- End Custom Components ---
+
+
 interface SummaryDisplayProps {
-  summary: string; // Raw Markdown for copy logic
-  summaryHtml: string; // HTML for display
+  summary: string; // Expect raw Markdown summary
   isLoading: boolean;
+  // Removed summaryHtml
 }
 
-// --- Helper functions for Copy-to-Clipboard Logic ---
-// Interfaces for parsed table data
-interface TableRow { cells: string[]; }
-interface TableSection {
-  title?: string; subtitle?: string; headers: string[]; rows: TableRow[]; alignments?: (string | null)[];
-}
-// Check if a block of text looks like a Markdown table
-const isTableSection = (text: string): boolean => {
-  const lines = text.split('\n'); let pipeLineCount = 0; let separatorLineFound = false;
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.includes('|')) {
-      pipeLineCount++;
-      if (trimmedLine.match(/^\|?\s*:(?!--)-+:(?!--)\s*\|?$/) || trimmedLine.match(/^\|?\s*:(?!--)-+\s*\|?$/) || trimmedLine.match(/^\|?\s*-+:(?!--)\s*\|?$/) || trimmedLine.match(/^\|?\s*-+\s*\|?$/)) {
-         if (trimmedLine.split('|').slice(1, -1).every(seg => seg.trim().match(/^:?-+:?$/))) { separatorLineFound = true; }
-      }
-    }
-  }
-  return pipeLineCount >= 3 && separatorLineFound;
-};
-// Parse Markdown table text into structured data
-const parseMarkdownTable = (tableText: string): TableSection[] => {
-  const sections: TableSection[] = []; let currentSection: TableSection | null = null; let lines = tableText.split('\n'); let lineIndex = 0;
-  while (lineIndex < lines.length) {
-    let line = lines[lineIndex].trim();
-    if (!line.includes('|') && line.length > 0 && lines[lineIndex + 1]?.trim().includes('|')) {
-       if (currentSection) sections.push(currentSection);
-       currentSection = { headers: [], rows: [], alignments: [], title: line };
-       let nextLine = lines[lineIndex + 1]?.trim();
-       if (nextLine && !nextLine.includes('|') && lines[lineIndex + 2]?.trim().includes('|')) { currentSection.subtitle = nextLine; lineIndex++; }
-       lineIndex++; line = lines[lineIndex]?.trim();
-    } else if (!currentSection && line.includes('|')) { currentSection = { headers: [], rows: [], alignments: [] }; }
-    if (!currentSection || !line) { lineIndex++; continue; }
-    if (currentSection.headers.length === 0 && line.includes('|')) {
-      currentSection.headers = line.split('|').map(h => h.trim()).filter((h, i, arr) => i !== 0 || i !== arr.length -1 || h); lineIndex++; line = lines[lineIndex]?.trim();
-      if (line && line.includes('|') && line.includes('-')) {
-         const segments = line.split('|').map(s => s.trim()).filter((s, i, arr) => i !== 0 || i !== arr.length -1 || s);
-         currentSection.alignments = segments.map(seg => { if (seg.startsWith(':') && seg.endsWith(':')) return 'center'; if (seg.startsWith(':')) return 'left'; if (seg.endsWith(':')) return 'right'; return null; });
-         lineIndex++; line = lines[lineIndex]?.trim();
-      } else { currentSection.headers = []; currentSection.alignments = []; continue; }
-    }
-    if (currentSection.headers.length > 0 && line.includes('|')) {
-      const cells = line.split('|').map(c => c.trim()).filter((c, i, arr) => i !== 0 || i !== arr.length -1 || c);
-      if (cells.length === currentSection.headers.length) { currentSection.rows.push({ cells }); }
-      else { if(cells.length > 0) currentSection.rows.push({ cells }); }
-    } else if (currentSection.headers.length > 0 && !line.includes('|')) { if (currentSection) sections.push(currentSection); currentSection = null; }
-    lineIndex++;
-  }
-  if (currentSection) sections.push(currentSection);
-  return sections.filter(s => s.headers.length > 0 && s.rows.length > 0);
-};
-// Format parsed table data into pre-formatted plain text
-const formatTableForPlainText = (tableData: TableSection): string => {
-  const colCount = tableData.headers.length; if (colCount === 0) return '';
-  const colWidths: number[] = tableData.headers.map(h => h.length);
-  tableData.rows.forEach(row => { row.cells.forEach((cell, i) => { if (i < colCount) { colWidths[i] = Math.max(colWidths[i] || 0, cell.length); } }); });
-  const padCell = (text: string, width: number, align: string | null): string => {
-    const padding = width - text.length; if (align === 'right') { return ' '.repeat(padding) + text; } else if (align === 'center') { const leftPad = Math.floor(padding / 2); const rightPad = padding - leftPad; return ' '.repeat(leftPad) + text + ' '.repeat(rightPad); } else { return text + ' '.repeat(padding); }
-  };
-  let output = ''; if (tableData.title) output += `${tableData.title}\n`; if (tableData.subtitle) output += `${tableData.subtitle}\n`;
-  const headerLine = tableData.headers.map((header, i) => padCell(header, colWidths[i], tableData.alignments?.[i] ?? null)).join(' | '); output += `| ${headerLine} |\n`;
-  const separatorLineAdjusted = colWidths.map((width, i) => { const align = tableData.alignments?.[i] ?? null; const dashWidth = colWidths[i]; if (align === 'center') return `:${'-'.repeat(dashWidth > 1 ? dashWidth - 2 : 0)}:`; if (align === 'left') return `:${'-'.repeat(dashWidth > 0 ? dashWidth -1 : 0)}`; if (align === 'right') return `${'-'.repeat(dashWidth > 0 ? dashWidth -1 : 0)}:`; return '-'.repeat(dashWidth); }).join(' | '); output += `| ${separatorLineAdjusted} |\n`;
-  tableData.rows.forEach(row => { const rowLine = row.cells.map((cell, i) => padCell(cell, colWidths[i], tableData.alignments?.[i] ?? null)).join(' | '); output += `| ${rowLine} |\n`; });
-  return output;
-};
-// --- End Helper functions ---
+// --- REMOVED Helper functions for Copy-to-Clipboard Logic ---
 
 
-export default function SummaryDisplay({ summary, summaryHtml, isLoading }: SummaryDisplayProps) {
+export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Updated copyToClipboard function
+  // Copy function - copies raw markdown for now
+  // TODO: Re-implement pre-formatted text copy logic if needed later
   const copyToClipboard = () => {
-    if (!summary) return;
-    try {
-      const sections = summary.split(/(\n\n+|(?=\n(?:Zakelijke Risico's:|Privé Risico's:)))/);
-      let clipboardText = '';
-      for (const section of sections) {
-        if (!section || section.trim() === '') continue;
-        if (isTableSection(section)) {
-          const parsedTables = parseMarkdownTable(section);
-          parsedTables.forEach(table => { clipboardText += formatTableForPlainText(table) + '\n\n'; });
-        } else { clipboardText += section.trim() + '\n\n'; }
-      }
-      navigator.clipboard.writeText(clipboardText.trim());
-      setCopied(true); setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Error preparing text for clipboard:", error);
-      navigator.clipboard.writeText(summary); setCopied(true); setTimeout(() => setCopied(false), 2000);
-    }
+    navigator.clipboard.writeText(summary || '');
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   };
+
 
   // Loading state
   if (isLoading) { return ( <div className="bg-white rounded-2xl shadow-lg p-6"><div className="animate-pulse">...</div></div> ); }
   // No summary
-  if (!summaryHtml) { return null; }
+  if (!summary) { return null; }
 
   // Animation variants
   const containerVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
@@ -140,19 +85,36 @@ export default function SummaryDisplay({ summary, summaryHtml, isLoading }: Summ
         {/* Tooltip */}
         <AnimatePresence> {copied && ( <MotionDiv className="absolute top-16 right-8 ...">Gekopieerd!</MotionDiv> )} </AnimatePresence>
         {/* Copy button */}
-        <MotionButton variants={buttonVariants} whileHover="hover" whileTap="tap" onClick={copyToClipboard} className="absolute top-6 right-6 ..." title="Kopiëren (pre-formatted text)" type="button">
+        <MotionButton variants={buttonVariants} whileHover="hover" whileTap="tap" onClick={copyToClipboard} className="absolute top-6 right-6 ..." title="Kopiëren" type="button">
           {copied ? ( <svg>...</svg> ) : ( <svg>...</svg> )}
         </MotionButton>
       </div>
 
-      {/* Content area - Render pre-generated HTML */}
+      {/* Content area - Use markdown-to-jsx */}
       <div className="p-8">
-        {/* Add a specific class for targeting styles */}
         <div ref={contentRef} className="summary-content max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-           {/* REMOVED prose class, render HTML directly */}
-           <div
-             dangerouslySetInnerHTML={{ __html: summaryHtml }}
-           />
+           {/* Render Markdown using markdown-to-jsx with overrides */}
+           <Markdown options={{
+               overrides: {
+                   table: { component: MyTable },
+                   thead: { component: MyThead },
+                   tbody: { component: MyTbody },
+                   tr: { component: MyTr },
+                   th: { component: MyTh },
+                   td: { component: MyTd },
+                   p: { component: MyP },
+                   ul: { component: MyUl },
+                   ol: { component: MyOl },
+                   li: { component: MyLi },
+                   h2: { component: MyH2 },
+                   h3: { component: MyH3 },
+                   strong: { component: MyStrong },
+                   hr: { component: MyHr },
+                   // Add overrides for other elements if default styling is not desired
+               }
+           }}>
+               {summary}
+           </Markdown>
          </div>
        </div>
 
@@ -162,43 +124,7 @@ export default function SummaryDisplay({ summary, summaryHtml, isLoading }: Summ
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-
-         /* Basic table styling targeting elements within .summary-content */
-         .summary-content table {
-           width: 100%;
-           border-collapse: collapse;
-           margin-top: 1em;
-           margin-bottom: 1em;
-           font-size: 0.875rem; /* Equivalent to text-sm */
-           line-height: 1.25rem;
-         }
-         .summary-content th,
-         .summary-content td {
-           border: 1px solid #e5e7eb; /* gray-200 */
-           padding: 0.5rem 0.75rem; /* Equivalent to py-2 px-3 */
-           vertical-align: top;
-           text-align: left;
-         }
-         .summary-content th {
-           background-color: #f9fafb; /* gray-50 */
-           font-weight: 600; /* Equivalent to font-semibold */
-           color: #374151; /* gray-700 */
-         }
-         .summary-content td {
-            color: #4b5563; /* gray-600 */
-         }
-         /* Add styles for other markdown elements if needed */
-         .summary-content p { margin-bottom: 1em; }
-         .summary-content ul, .summary-content ol { margin-left: 1.5em; margin-bottom: 1em; }
-         .summary-content li { margin-bottom: 0.25em; }
-         .summary-content h1, .summary-content h2, .summary-content h3, .summary-content h4 {
-             font-weight: 600; margin-top: 1.5em; margin-bottom: 0.5em;
-         }
-         .summary-content h2 { font-size: 1.25em; }
-         .summary-content h3 { font-size: 1.1em; }
-         .summary-content strong { font-weight: 600; }
-         .summary-content hr { border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
-
+        /* Removed global table styles - handled by overrides now */
        `}</style>
      </MotionDiv>
    );
