@@ -41,6 +41,7 @@ export async function POST(request: Request) {
 5.  **Taalgebruik:** Gebruik heldere, actieve taal. Wees objectief bij het weergeven van verschillende meningen.
 6.  **Deelnemers:** Identificeer sprekers en hun bijdragen waar mogelijk.
 7.  **Resultaten:** Sluit af met een duidelijke sectie voor **Belangrijkste Conclusies** (zowel expliciet als impliciet) en **Actiepunten** (indien genoemd, met eventuele verantwoordelijken).
+8.  **Tabellen:** Als de transcriptie gegevens bevat die het beste in een tabel kunnen worden weergegeven (bijv. vergelijkingen, lijsten met eigenschappen), formatteer deze dan als een standaard Markdown-tabel. Zorg ervoor dat je de koptekstscheidingslijn (|---|---|...) opneemt.
 
 **Vermijd:**
 *   Hallucinaties of informatie die niet in de tekst staat.
