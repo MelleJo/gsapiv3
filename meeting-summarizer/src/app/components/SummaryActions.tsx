@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Copy, Check, Wand2, MessageSquarePlus, TextSearch } from 'lucide-react'; // Import icons
+import { Loader2, Copy, Check, Wand2, MessageSquarePlus, TextSearch, Mail, ListChecks } from 'lucide-react'; // Added Mail, ListChecks icons
+import { toast } from "sonner"; // Import toast
 
 // Removed MotionDiv definition
 
@@ -14,15 +15,15 @@ interface SummaryActionsProps {
   summary: string;
   transcription: string;
   onRefinedSummary: (refinedSummary: string) => void;
-  onOpenEmailModal: () => void;
+  onOpenEmailModal: () => void; // Restore prop
 }
 
 export default function SummaryActions({
   summary,
   transcription,
   onRefinedSummary,
-  // Removed onOpenEmailModal from props and destructuring
-}: Omit<SummaryActionsProps, 'onOpenEmailModal'>) { // Omit the prop type
+  onOpenEmailModal, // Restore prop
+}: SummaryActionsProps) { // Use full props type
   const [loading, setLoading] = useState<boolean>(false);
   const [activeAction, setActiveAction] = useState<string | null>(null); // Tracks which button is loading
   const [topicInput, setTopicInput] = useState<string>('');
@@ -179,6 +180,43 @@ export default function SummaryActions({
     }
   };
 
+  const handleExtractActions = async () => {
+    if (!validateInputs()) return;
+
+    setLoading(true);
+    setActiveAction('extract-actions');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/refine-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary, // Use current summary as context
+          transcript: transcription,
+          action: 'extract-actions' // New action type
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Onbekende fout bij het extraheren van actiepunten');
+      }
+
+      // Decide how to display actions - replace summary or show separately?
+      // For now, let's replace the summary with the extracted actions.
+      onRefinedSummary(data.refinedSummary);
+      toast.success("Actiepunten geëxtraheerd!");
+
+    } catch (error) {
+      console.error('Error extracting action items:', error);
+      setError(error instanceof Error ? error.message : 'Er is een fout opgetreden bij het extraheren van actiepunten');
+    } finally {
+      setLoading(false);
+      setActiveAction(null);
+    }
+  };
+
   // Function to handle copying the transcript
   const handleCopyTranscript = useCallback(() => {
     if (!transcription) {
@@ -212,10 +250,11 @@ export default function SummaryActions({
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Make Detailed */}
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-2">
+        {/* Main Actions Row */}
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+           {/* Make Detailed */}
+           <Card className="bg-muted/30 flex-1">
+             <CardHeader className="pb-2">
               <CardTitle className="text-base">Maak Gedetailleerder</CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
@@ -232,13 +271,13 @@ export default function SummaryActions({
                   <><MessageSquarePlus className="mr-2 h-4 w-4" /> Meer details</>
                 )}
               </Button>
-            </CardContent>
-          </Card>
+             </CardContent>
+           </Card>
 
-          {/* Copy Transcript */}
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Kopieer Transcript</CardTitle>
+           {/* Copy Transcript */}
+           <Card className="bg-muted/30 flex-1">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Kopieer Transcript</CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
               <p className="text-muted-foreground text-sm mb-3">Kopieer de volledige transcriptie.</p>
@@ -254,13 +293,33 @@ export default function SummaryActions({
                   <><Copy className="mr-2 h-4 w-4" /> Kopieer</>
                 )}
               </Button>
-            </CardContent>
-          </Card>
+             </CardContent>
+           </Card>
 
-          {/* Elaborate Topic */}
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Breid Onderwerp Uit</CardTitle>
+           {/* Email Summary */}
+           <Card className="bg-muted/30 flex-1">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">E-mail Samenvatting</CardTitle>
+             </CardHeader>
+             <CardContent className="pb-4">
+               <p className="text-muted-foreground text-sm mb-3">Verstuur de samenvatting via e-mail.</p>
+               <Button
+                 onClick={onOpenEmailModal} // Use the restored prop
+                 className="w-full"
+                 variant="secondary"
+               >
+                 <Mail className="mr-2 h-4 w-4" /> E-mail Versturen
+               </Button>
+             </CardContent>
+           </Card>
+        </div>
+
+        {/* Refinement Actions Grid */}
+        <div className="grid gap-4 md:grid-cols-2">
+           {/* Elaborate Topic */}
+           <Card className="bg-muted/30">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Breid Onderwerp Uit</CardTitle>
             </CardHeader>
             <CardContent className="pb-4 space-y-3">
               <p className="text-muted-foreground text-sm">Werk een specifiek onderwerp verder uit.</p>
@@ -287,13 +346,13 @@ export default function SummaryActions({
                   )}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+             </CardContent>
+           </Card>
 
-          {/* Custom Refinement */}
-          <Card className="bg-muted/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Aangepaste Aanpassing</CardTitle>
+           {/* Custom Refinement */}
+           <Card className="bg-muted/30">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Aangepaste Aanpassing</CardTitle>
             </CardHeader>
             <CardContent className="pb-4 space-y-3">
               <p className="text-muted-foreground text-sm">Geef een specifieke instructie.</p>
@@ -317,12 +376,98 @@ export default function SummaryActions({
                   'Toepassen'
                 )}
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* Removed Email Button Section */}
-
+             </CardContent>
+           </Card>
         </div>
+
+        {/* Refinement Actions Grid */}
+        <div className="grid gap-4 md:grid-cols-2">
+           {/* Extract Action Items */}
+           <Card className="bg-muted/30">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Extraheer Actiepunten</CardTitle>
+             </CardHeader>
+             <CardContent className="pb-4">
+               <p className="text-muted-foreground text-sm mb-3">Lijst alle actiepunten uit het gesprek op.</p>
+               <Button
+                 onClick={handleExtractActions}
+                 disabled={loading}
+                 className="w-full"
+                 variant="secondary"
+               >
+                 {loading && activeAction === 'extract-actions' ? (
+                   <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Bezig...</>
+                 ) : (
+                   <><ListChecks className="mr-2 h-4 w-4" /> Extraheer Acties</>
+                 )}
+               </Button>
+             </CardContent>
+           </Card>
+
+           {/* Elaborate Topic */}
+           <Card className="bg-muted/30">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Breid Onderwerp Uit</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 space-y-3">
+              <p className="text-muted-foreground text-sm">Werk een specifiek onderwerp verder uit.</p>
+              <div className="flex space-x-2">
+                <Input
+                  type="text"
+                  value={topicInput}
+                  onChange={(e) => setTopicInput(e.target.value)}
+                  placeholder="Voer onderwerp in..."
+                  className="flex-1"
+                  disabled={loading}
+                />
+                <Button
+                  onClick={handleTopicElaboration}
+                  disabled={loading || !topicInput.trim()}
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Breid onderwerp uit"
+                >
+                  {loading && activeAction === 'elaborate-topic' ? (
+                    <Loader2 className="animate-spin h-4 w-4" />
+                  ) : (
+                    <TextSearch className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+             </CardContent>
+           </Card>
+
+           {/* Custom Refinement */}
+           <Card className="bg-muted/30">
+             <CardHeader className="pb-2">
+               <CardTitle className="text-base">Aangepaste Aanpassing</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 space-y-3">
+              <p className="text-muted-foreground text-sm">Geef een specifieke instructie.</p>
+              <Textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="Bv: Focus op actiepunten..."
+                className="text-sm"
+                rows={2}
+                disabled={loading}
+              />
+              <Button
+                onClick={handleCustomRefinement}
+                disabled={loading || !customPrompt.trim()}
+                className="w-full"
+                variant="secondary"
+              >
+                {loading && activeAction === 'custom' ? (
+                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Bezig...</>
+                ) : (
+                  'Toepassen'
+                )}
+              </Button>
+             </CardContent>
+           </Card>
+        </div>
+
       </CardContent>
     </Card>
   );

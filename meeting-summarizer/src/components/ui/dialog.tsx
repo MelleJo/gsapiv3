@@ -21,8 +21,8 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      // Applied frozen glass effect: gradient, blur, slight opacity adjustment if needed
-      "fixed inset-0 z-50 bg-gradient-to-br from-glass-blue to-glass-green backdrop-blur-md",
+      // Toned down: Solid dark overlay, subtle blur
+      "fixed inset-0 z-50 bg-black/70 backdrop-blur-sm", // Dark overlay, less blur
       // Original animation/state classes
       "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
@@ -41,8 +41,8 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Adjusted content background for slight transparency and ensure text is readable (light text)
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-white/20 bg-black/60 p-6 shadow-lg text-white", // Use semi-transparent black, white text, subtle border
+        // Toned down: Use dark solid background matching Card, light text
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-700 bg-slate-800 p-6 shadow-lg text-slate-100", // Dark solid bg, light text
         // Original positioning and animation classes
         "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className
@@ -50,8 +50,8 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      {/* Ensure close button is visible */}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-white/10 data-[state=open]:text-white">
+      {/* Ensure close button uses light color */}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-slate-800 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-slate-700 data-[state=open]:text-slate-300 text-slate-300">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>

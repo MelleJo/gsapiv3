@@ -3,7 +3,8 @@ import { AlertTriangle } from 'lucide-react'; // Using an icon for attention
 
 export default function PrivacyBanner() {
   return (
-    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 my-6 mx-auto max-w-5xl rounded-md shadow" role="alert">
+    // Increased vertical margin from my-6 to my-8
+    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 my-8 mx-auto max-w-5xl rounded-md shadow" role="alert">
       <div className="flex items-center">
         <div className="py-1">
           <AlertTriangle className="h-6 w-6 text-yellow-500 mr-3" />

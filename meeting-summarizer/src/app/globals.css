@@ -58,7 +58,8 @@ body {
   font-family: var(--font-sans);
   /* Updated background to dark blue-gray, foreground to light gray */
   background-color: rgb(30 41 59); /* Equivalent to slate-800 */
-  color: rgb(229 231 235); /* Equivalent to gray-200 */
+  color: theme('colors.slate.200'); /* Use Tailwind color */
+  @apply text-base; /* Ensure base font size is applied */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

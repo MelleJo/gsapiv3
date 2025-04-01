@@ -3,10 +3,8 @@ import React from 'react';
 
 export default function Header() {
   return (
-    // Updated header with gradient background and new title
-    <header className="relative w-full overflow-hidden bg-gradient-to-r from-glass-blue to-glass-green text-white shadow-md"> {/* Applied gradient */}
-      {/* Removed subtle gradient overlay div */}
-
+    // Refined header: Solid dark bg matching body, subtle bottom border
+    <header className="relative w-full overflow-hidden bg-slate-800 text-white border-b border-slate-700"> {/* Dark solid bg, subtle border */}
       {/* Content */}
       <div className="relative z-10 w-full py-8 md:py-12"> {/* Adjusted padding */}
         <div className="max-w-5xl mx-auto px-4 text-center">

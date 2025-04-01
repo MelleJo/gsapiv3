@@ -4,29 +4,29 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-// Adjusted variants for glass background
+// Reverted to standard dark theme variants (adjust as needed for final look)
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-60 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black/30", // Adjusted focus ring and disabled opacity
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900", // Adjusted focus ring for dark bg
   {
     variants: {
       variant: {
-        // Default: Semi-transparent white bg, white text, subtle border
+        // Default: Use primary colors (adjust if needed)
         default:
-          "bg-white/20 text-white shadow-xs hover:bg-white/30 border border-white/30",
-        // Destructive: Semi-transparent red bg, white text
+          "bg-blue-600 text-white shadow-xs hover:bg-blue-700", // Example: Using blue
+        // Destructive: Standard destructive
         destructive:
-          "bg-red-600/70 text-white shadow-xs hover:bg-red-600/80 focus-visible:ring-red-500/50",
-        // Outline: Transparent bg, white text, white border
+          "bg-red-600 text-white shadow-xs hover:bg-red-700 focus-visible:ring-red-500",
+        // Outline: Light border, light text
         outline:
-          "border border-white/40 bg-transparent shadow-xs hover:bg-white/10 text-white",
-        // Secondary: Darker transparent bg, white text
+          "border border-slate-600 bg-transparent shadow-xs hover:bg-slate-700 text-slate-100",
+        // Secondary: Slightly lighter dark bg
         secondary:
-          "bg-black/30 text-white shadow-xs hover:bg-black/40 border border-white/10",
-        // Ghost: Transparent bg, white text, subtle hover
+          "bg-slate-700 text-slate-100 shadow-xs hover:bg-slate-600",
+        // Ghost: Subtle hover bg
         ghost:
-          "hover:bg-white/10 text-white",
-        // Link: White text, subtle underline on hover
-        link: "text-white underline-offset-4 hover:underline hover:text-white/90",
+          "hover:bg-slate-700 text-slate-100",
+        // Link: Standard link color for dark theme
+        link: "text-blue-400 underline-offset-4 hover:underline hover:text-blue-300",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

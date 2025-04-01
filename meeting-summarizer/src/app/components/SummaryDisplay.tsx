@@ -166,21 +166,24 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   };
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30 border-b">
-        <CardTitle className="text-xl font-semibold">
+    // Override Card styles for SummaryDisplay: white bg, dark text
+    <Card className="overflow-hidden bg-white text-gray-900 border border-gray-200 shadow-md">
+      {/* Adjust Header for white background */}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-gray-50 border-b border-gray-200">
+        <CardTitle className="text-xl font-semibold text-gray-800"> {/* Darker title */}
           Samenvatting
         </CardTitle>
-        <Button variant="ghost" size="icon" onClick={copyToClipboard} aria-label="Kopieer samenvatting">
+        {/* Adjust copy button for light background */}
+        <Button variant="ghost" size="icon" onClick={copyToClipboard} aria-label="Kopieer samenvatting" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
           {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
         </Button>
       </CardHeader>
 
       <CardContent className="p-6">
-         {/* Container without prose classes */}
-        <div ref={contentRef} className="max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-sm"> {/* Added text-sm for base size */}
+         {/* Ensure container text color is dark */}
+        <div ref={contentRef} className="max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-sm text-gray-800"> {/* Set base text color */}
           {parsedContent.map((item, index) => {
-            // Render Table Block
+            // Render Table Block - Ensure table components use appropriate colors for light bg
             if (item.type === 'table' && Array.isArray(item.content) && item.content.length > 0) {
               const headers = item.content[0];
               const rows = item.content.slice(1);

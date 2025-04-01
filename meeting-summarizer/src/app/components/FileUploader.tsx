@@ -271,13 +271,13 @@ export default function FileUploader({
 
   return (
     <div className="flex flex-col items-center w-full">
-      {/* Updated dropzone styles for glass theme */}
+      {/* Reverted dropzone styles to default (or adjust for dark theme) */}
       <div
         className={cn(
-          "w-full rounded-xl p-6 text-center cursor-pointer transition-colors border border-white/20 bg-white/5", // Subtle bg and border
+          "w-full border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors border-slate-600 hover:border-slate-500 hover:bg-slate-700/50", // Dark theme dashed border
           isDragging
-            ? 'bg-white/10 ring-2 ring-white/50' // Highlight on drag
-            : 'hover:bg-white/10' // Hover effect
+            ? 'border-blue-500 bg-blue-900/30' // Dark theme drag highlight
+            : ''
         )}
         onClick={triggerFileInput}
         onDragEnter={handleDragEnter}
@@ -285,30 +285,30 @@ export default function FileUploader({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Inner content: Adjusted text colors for light text */}
-        <div className="flex flex-col items-center justify-center gap-2 text-center text-white">
-          <UploadCloud className={`h-12 w-12 transition-colors ${isDragging ? 'text-white' : 'text-white/70'}`} />
-          <h3 className="text-lg font-medium">
+        {/* Inner content: Reverted text colors to work with dark theme */}
+        <div className="flex flex-col items-center justify-center gap-2 text-center">
+          <UploadCloud className={`h-12 w-12 transition-colors ${isDragging ? 'text-blue-400' : 'text-slate-500'}`} />
+          <h3 className="text-lg font-medium text-slate-100"> {/* Light text */}
             Sleep een audiobestand hierheen
           </h3>
-          <p className="text-sm text-white/60 mb-2">
-            of <span className="text-white font-medium">klik om te bladeren</span>
+          <p className="text-sm text-slate-400 mb-2"> {/* Muted light text */}
+            of <span className="text-blue-400 font-medium">klik om te bladeren</span> {/* Accent color */}
           </p>
-          <p className="text-xs text-white/50">
+          <p className="text-xs text-slate-500"> {/* More muted light text */}
             Ondersteunde bestanden: MP3, WAV, M4A, MP4, etc.
           </p>
-          {/* File info display adjustments */}
+          {/* File info display adjustments for dark theme */}
           {fileInfo && (
-            <div className="mt-3 p-3 bg-black/20 rounded-lg text-sm text-white/90 flex flex-col w-full text-left border border-white/10">
+            <div className="mt-3 p-3 bg-slate-700/50 rounded-lg text-sm text-slate-200 flex flex-col w-full text-left border border-slate-600"> {/* Darker bg, lighter text */}
               <div className="flex items-center mb-1 font-medium">
                 <FileAudio className="h-4 w-4 mr-2 flex-shrink-0" />
                 <span className="truncate">{fileName}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs pl-6">
-                {/* Adjusted muted text color */}
-                <div><span className="text-white/60">Formaat:</span> {fileInfo.format}</div>
-                <div><span className="text-white/60">Grootte:</span> {fileInfo.size}</div>
-                <div><span className="text-white/60">Duur:</span> {fileInfo.duration}</div>
+                {/* Adjusted muted text color for dark theme */}
+                <div><span className="text-slate-400">Formaat:</span> {fileInfo.format}</div>
+                <div><span className="text-slate-400">Grootte:</span> {fileInfo.size}</div>
+                <div><span className="text-slate-400">Duur:</span> {fileInfo.duration}</div>
               </div>
             </div>
           )}
@@ -356,11 +356,13 @@ export default function FileUploader({
         )}
 
         {/* Process Button */}
+        {/* Updated Process Button to use default (blue) variant */}
         <Button
           onClick={startProcess}
           disabled={!selectedFile || isConverting || uploading}
           className="mt-4 w-full"
           size="lg" // Make button larger
+          variant="default" // Use default (blue) variant
         >
           {isConverting ? (
             <>

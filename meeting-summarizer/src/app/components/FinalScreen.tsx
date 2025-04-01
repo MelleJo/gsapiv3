@@ -1,14 +1,16 @@
 // src/app/components/FinalScreen.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Add useEffect import
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardFooter
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Settings, Mail, RotateCcw, FileText, Trash2 } from 'lucide-react'; // Import icons
+import { Settings, Mail, RotateCcw, FileText, Trash2, Save, XCircle, Edit } from 'lucide-react'; // Added Save, XCircle, Edit icons
 import SummaryDisplay from './SummaryDisplay';
 import SummaryActions from './SummaryActions';
+import { Textarea } from "@/components/ui/textarea"; // Import Textarea
+import { toast } from "sonner"; // For notifications
 
 // Removed MotionDiv definition
 
@@ -32,8 +34,7 @@ interface FinalScreenProps {
 }
 
 export default function FinalScreen({
-  summary, // Only raw summary prop needed
-  // Removed summaryHtml
+  summary: initialSummary, // Rename prop to avoid conflict with state
   transcription,
   audioFileName,
   isSummarizing,
@@ -46,7 +47,31 @@ export default function FinalScreen({
   onRegenerateSummary,
   onRegenerateTranscript
 }: FinalScreenProps) {
-  // Removed showTranscript state, Accordion handles its own state
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editedSummary, setEditedSummary] = useState(initialSummary);
+
+  // Update local state if initialSummary prop changes (e.g., after regeneration)
+  useEffect(() => {
+    setEditedSummary(initialSummary);
+  }, [initialSummary]);
+
+  const handleEditToggle = () => {
+    if (isEditingSummary) {
+      // If canceling edit, reset to initial summary
+      setEditedSummary(initialSummary);
+    }
+    setIsEditingSummary(!isEditingSummary);
+  };
+
+  const handleSummaryChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditedSummary(event.target.value);
+  };
+
+  const handleSaveChanges = () => {
+    onRefinedSummary(editedSummary); // Pass edited summary back up
+    setIsEditingSummary(false); // Exit editing mode
+    toast.success("Samenvatting bijgewerkt!");
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
@@ -64,26 +89,62 @@ export default function FinalScreen({
         </CardContent>
       </Card>
 
-      {/* Summary Card */}
+      {/* Summary Card - Now with Editing */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row justify-between items-center">
           <CardTitle>Samenvatting</CardTitle>
+          {/* Edit/Cancel Button */}
+          <Button variant="ghost" size="sm" onClick={handleEditToggle}>
+            {isEditingSummary ? (
+              <><XCircle className="mr-2 h-4 w-4" /> Annuleren</>
+            ) : (
+              <><Edit className="mr-2 h-4 w-4" /> Bewerken</>
+            )}
+          </Button>
         </CardHeader>
         <CardContent>
-          {/* Pass only summary */}
-          <SummaryDisplay summary={summary} isLoading={isSummarizing} />
+          {isEditingSummary ? (
+            <div className="space-y-4">
+              <Textarea
+                value={editedSummary}
+                onChange={handleSummaryChange}
+                rows={15} // Adjust rows as needed
+                // Use dark theme styles for textarea within the dark card
+                className="w-full font-sans text-sm border-slate-600 bg-slate-700/50 text-slate-100 placeholder:text-slate-400 focus-visible:ring-slate-400"
+              />
+              {/* Save Button - Only shown when editing */}
+              <div className="flex justify-end">
+                <Button onClick={handleSaveChanges}>
+                  <Save className="mr-2 h-4 w-4" /> Wijzigingen Opslaan
+                </Button>
+              </div>
+            </div>
+          ) : (
+            // Display the potentially edited summary using SummaryDisplay
+            // Ensure SummaryDisplay uses the correct background/text color for readability
+             <div className="bg-white text-gray-900 p-4 rounded-md border border-gray-200"> {/* Wrap SummaryDisplay for light background */}
+               <SummaryDisplay summary={editedSummary} isLoading={isSummarizing} />
+             </div>
+          )}
         </CardContent>
-        {/* Summary actions integrated into Footer */}
-        {summary && !isSummarizing && (
+        {/* Summary actions (like Email) in Footer - Only show when not editing */}
+        {!isEditingSummary && editedSummary && !isSummarizing && (
           <CardFooter className="flex flex-wrap gap-2 justify-end">
-             {/* Integrate SummaryActions directly or replicate buttons */}
              <Button variant="ghost" onClick={onOpenEmailModal}>
                <Mail className="mr-2 h-4 w-4" /> E-mail Samenvatting
              </Button>
-             {/* Add refine/edit button if needed from SummaryActions */}
+             {/* Consider moving refine actions here or keeping them separate */}
           </CardFooter>
         )}
       </Card>
+
+      {/* Summary Actions Card (Refinement) - Keep separate for now */}
+       <SummaryActions
+         summary={editedSummary} // Pass potentially edited summary
+         transcription={transcription}
+         onRefinedSummary={onRefinedSummary} // This will update editedSummary via prop change
+         onOpenEmailModal={onOpenEmailModal} // Keep prop, though button moved above
+       />
 
 
       {/* Transcription Accordion */}

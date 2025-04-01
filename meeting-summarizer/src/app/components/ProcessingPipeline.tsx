@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { X as IconX, Check, Loader2, FileText, BrainCircuit, UploadCloud, Settings2, CheckCircle } from 'lucide-react'; // Import icons
+import { cn } from "@/lib/utils"; // Import cn utility
 
 // Pipeline stages
 export type PipelineStage =
@@ -174,12 +175,16 @@ export default function ProcessingPipeline({
         // Use standard div with fade transition (can add framer-motion later if needed)
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300"
-          style={{ opacity: isActive ? 1 : 0 }} // Simple fade
-        >
-          <Card className="w-full max-w-2xl shadow-2xl"> {/* Use Card */}
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b"> {/* Adjust header layout */}
-              <div className="space-y-1">
-                <CardTitle className="text-xl"> {/* Adjust title size */}
+           style={{ opacity: isActive ? 1 : 0 }} // Simple fade
+         >
+           {/* Add conditional border when active */}
+           <Card className={cn(
+               "w-full max-w-2xl shadow-2xl",
+               isActive && "border-blue-500 border-2" // Add blue border when active
+            )}>
+             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b"> {/* Adjust header layout */}
+               <div className="space-y-1">
+                 <CardTitle className="text-xl"> {/* Adjust title size */}
                   {getStageName()}
                 </CardTitle>
                 <CardDescription>
@@ -296,25 +301,27 @@ function PipelineStepIndicator({
   completed: boolean;
   active: boolean;
 }) {
+  // Enhanced state classes for better visual feedback in dark theme
   const stateClasses = completed
-    ? 'bg-primary border-primary text-primary-foreground' // Completed state
+    ? 'bg-green-600 border-green-500 text-white' // Completed: Green background
     : active
-    ? 'bg-background border-primary text-primary ring-2 ring-primary/30 ring-offset-2 ring-offset-background' // Active state with ring
-    : 'bg-background border-border text-muted-foreground'; // Default state
+    ? 'bg-slate-700 border-blue-500 text-blue-300 ring-2 ring-blue-500/50 ring-offset-2 ring-offset-slate-800' // Active: Blue border/ring, slightly different bg
+    : 'bg-slate-800 border-slate-600 text-slate-500'; // Default: Darker bg, muted text/border
 
   return (
     <div className="flex flex-col items-center z-10 text-center w-16"> {/* Added width */}
       {/* Use motion.div for animation */}
       <motion.div
         animate={active ? { scale: [1, 1.1, 1] } : {}} // Simplified animation
-        transition={{ duration: 1.5, repeat: active ? Infinity : 0 }}
+        transition={{ duration: active ? 1.5 : 0, repeat: active ? Infinity : 0 }} // Only repeat animation when active
       >
         <div className={`w-10 h-10 rounded-full flex items-center justify-center z-10 border-2 transition-colors duration-300 ${stateClasses}`}>
           {completed ? <Check className="h-5 w-5" /> : icon} {/* Correct icon reference */}
         </div>
       </motion.div>
+      {/* Adjust text color based on state */}
       <span className={`mt-2 text-xs font-medium transition-colors duration-300 ${
-        completed ? 'text-primary' : active ? 'text-primary' : 'text-muted-foreground'
+        completed ? 'text-green-400' : active ? 'text-blue-400' : 'text-slate-500'
       }`}>
         {label}
       </span>
