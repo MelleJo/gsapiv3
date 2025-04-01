@@ -43,7 +43,7 @@ export default function RootLayout({
         <main>{children}</main>
         <Toaster /> {/* Add Toaster component */}
         <footer className="mt-auto py-6 text-center text-sm text-muted-foreground"> {/* Use theme color */}
-          <p>© {new Date().getFullYear()} Super Kees Online - Powered by AI</p>
+          <p>© {new Date().getFullYear()} Super Kees Online</p>
         </footer>
       </body>
     </html>
