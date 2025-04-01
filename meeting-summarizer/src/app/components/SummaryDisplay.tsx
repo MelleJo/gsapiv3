@@ -12,20 +12,25 @@ import { Copy, Check, Loader2 } from 'lucide-react'; // Import icons
 
 // --- Custom Components for Markdown Overrides ---
 // Add ReactNode type for children
-const MyTable = ({ children, ...props }: { children?: ReactNode }) => <table className="min-w-full border-collapse border border-gray-300 my-6 text-sm rounded-lg overflow-hidden shadow" {...props}>{children}</table>; // Added shadow
+// Increased table margin
+const MyTable = ({ children, ...props }: { children?: ReactNode }) => <table className="min-w-full border-collapse border border-gray-300 my-8 text-sm rounded-lg overflow-hidden shadow" {...props}>{children}</table>;
 const MyThead = ({ children, ...props }: { children?: ReactNode }) => <thead className="bg-gray-200" {...props}>{children}</thead>;
-const MyTbody = ({ children, ...props }: { children?: ReactNode }) => <tbody className="divide-y divide-gray-200" {...props}>{children}</tbody>; // Added divide for horizontal lines
-const MyTr = ({ children, ...props }: { children?: ReactNode }) => <tr className="hover:bg-gray-50" {...props}>{children}</tr>; // Removed border-b (handled by tbody divide)
-const MyTh = ({ children, ...props }: { children?: ReactNode }) => <th className="border-l border-r border-gray-300 px-4 py-3 text-left font-medium text-gray-800 bg-gray-100 first:border-l-0 last:border-r-0" {...props}>{children}</th>; // Added border-l/r, removed top/bottom border, handle edges
-const MyTd = ({ children, ...props }: { children?: ReactNode }) => <td className="border-l border-r border-gray-300 px-4 py-3 text-gray-700 align-top first:border-l-0 last:border-r-0" {...props}>{children}</td>; // Added border-l/r, removed top/bottom border, handle edges, align-top
-const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="mb-4" {...props}>{children}</p>; // Adjusted mb-5 to mb-4 for consistency
-const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-4 space-y-1" {...props}>{children}</ul>; // Adjusted mb-5 to mb-4, added space-y-1
-const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-4 space-y-1" {...props}>{children}</ol>; // Adjusted mb-5 to mb-4, added space-y-1
-const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-1" {...props}>{children}</li>; // Adjusted mb-2 to mb-1 (space-y on parent handles list item spacing)
-const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-2xl font-semibold mt-6 mb-3 border-b border-gray-300 pb-2 text-gray-800" {...props}>{children}</h2>; // Adjusted margins/border
-const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-xl font-medium mt-5 mb-2 text-gray-700" {...props}>{children}</h3>; // Adjusted margins
+const MyTbody = ({ children, ...props }: { children?: ReactNode }) => <tbody className="divide-y divide-gray-200" {...props}>{children}</tbody>;
+const MyTr = ({ children, ...props }: { children?: ReactNode }) => <tr className="hover:bg-gray-50" {...props}>{children}</tr>;
+const MyTh = ({ children, ...props }: { children?: ReactNode }) => <th className="border-l border-r border-gray-300 px-4 py-3 text-left font-medium text-gray-800 bg-gray-100 first:border-l-0 last:border-r-0" {...props}>{children}</th>;
+const MyTd = ({ children, ...props }: { children?: ReactNode }) => <td className="border-l border-r border-gray-300 px-4 py-3 text-gray-700 align-top first:border-l-0 last:border-r-0" {...props}>{children}</td>;
+// Increased paragraph bottom margin
+const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="mb-5" {...props}>{children}</p>;
+// Increased list bottom margin and item spacing
+const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-5 space-y-2" {...props}>{children}</ul>;
+const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-5 space-y-2" {...props}>{children}</ol>; // Corrected closing tag implicitly
+const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-1.5" {...props}>{children}</li>; // Slightly more space between list items
+// Increased heading margins
+const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-2xl font-semibold mt-8 mb-4 border-b border-gray-300 pb-2 text-gray-800" {...props}>{children}</h2>;
+const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-xl font-medium mt-6 mb-3 text-gray-700" {...props}>{children}</h3>;
 const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong className="font-semibold text-gray-900" {...props}>{children}</strong>;
-const MyHr = ({ ...props }) => <hr className="my-6 border-t border-gray-200" {...props} />; // Adjusted margin
+// Increased hr margin
+const MyHr = ({ ...props }) => <hr className="my-8 border-t border-gray-200" {...props} />;
 // --- End Custom Components ---
 
 // Helper function to check if a line looks like a pipe-separated table row

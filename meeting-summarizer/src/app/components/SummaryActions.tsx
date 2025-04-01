@@ -255,7 +255,7 @@ export default function SummaryActions({
            {/* Make Detailed */}
            <Card className="bg-muted/30 flex-1">
              <CardHeader className="pb-2">
-              <CardTitle className="text-base">Maak Gedetailleerder</CardTitle>
+              <CardTitle className="text-base">Maak gedetailleerder</CardTitle> {/* Sentence case */}
             </CardHeader>
             <CardContent className="pb-4">
               <p className="text-muted-foreground text-sm mb-3">Voeg meer details toe uit het transcript.</p>
@@ -277,7 +277,7 @@ export default function SummaryActions({
            {/* Copy Transcript */}
            <Card className="bg-muted/30 flex-1">
              <CardHeader className="pb-2">
-               <CardTitle className="text-base">Kopieer Transcript</CardTitle>
+               <CardTitle className="text-base">Kopieer transcript</CardTitle> {/* Sentence case */}
             </CardHeader>
             <CardContent className="pb-4">
               <p className="text-muted-foreground text-sm mb-3">Kopieer de volledige transcriptie.</p>
@@ -299,7 +299,7 @@ export default function SummaryActions({
            {/* Email Summary */}
            <Card className="bg-muted/30 flex-1">
              <CardHeader className="pb-2">
-               <CardTitle className="text-base">E-mail Samenvatting</CardTitle>
+               <CardTitle className="text-base">E-mail samenvatting</CardTitle> {/* Sentence case */}
              </CardHeader>
              <CardContent className="pb-4">
                <p className="text-muted-foreground text-sm mb-3">Verstuur de samenvatting via e-mail.</p>
@@ -380,12 +380,12 @@ export default function SummaryActions({
            </Card>
         </div>
 
-        {/* Refinement Actions Grid */}
+        {/* Refinement Actions Grid - Keep only one instance */}
         <div className="grid gap-4 md:grid-cols-2">
            {/* Extract Action Items */}
            <Card className="bg-muted/30">
              <CardHeader className="pb-2">
-               <CardTitle className="text-base">Extraheer Actiepunten</CardTitle>
+               <CardTitle className="text-base">Extraheer actiepunten</CardTitle> {/* Sentence case */}
              </CardHeader>
              <CardContent className="pb-4">
                <p className="text-muted-foreground text-sm mb-3">Lijst alle actiepunten uit het gesprek op.</p>
@@ -407,7 +407,7 @@ export default function SummaryActions({
            {/* Elaborate Topic */}
            <Card className="bg-muted/30">
              <CardHeader className="pb-2">
-               <CardTitle className="text-base">Breid Onderwerp Uit</CardTitle>
+               <CardTitle className="text-base">Breid onderwerp uit</CardTitle> {/* Sentence case */}
             </CardHeader>
             <CardContent className="pb-4 space-y-3">
               <p className="text-muted-foreground text-sm">Werk een specifiek onderwerp verder uit.</p>
@@ -440,7 +440,7 @@ export default function SummaryActions({
            {/* Custom Refinement */}
            <Card className="bg-muted/30">
              <CardHeader className="pb-2">
-               <CardTitle className="text-base">Aangepaste Aanpassing</CardTitle>
+               <CardTitle className="text-base">Aangepaste aanpassing</CardTitle> {/* Sentence case */}
             </CardHeader>
             <CardContent className="pb-4 space-y-3">
               <p className="text-muted-foreground text-sm">Geef een specifieke instructie.</p>
@@ -466,6 +466,7 @@ export default function SummaryActions({
               </Button>
              </CardContent>
            </Card>
+           {/* Removed the duplicate grid div below */}
         </div>
 
       </CardContent>

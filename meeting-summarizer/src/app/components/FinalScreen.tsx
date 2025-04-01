@@ -78,7 +78,7 @@ export default function FinalScreen({
       {/* Header Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Verwerking Voltooid</CardTitle>
+          <CardTitle>Verwerking voltooid</CardTitle> {/* Sentence case */}
           <CardDescription>Bestand: {audioFileName}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -92,7 +92,7 @@ export default function FinalScreen({
       {/* Summary Card - Now with Editing */}
       <Card>
         <CardHeader className="flex flex-row justify-between items-center">
-          <CardTitle>Samenvatting</CardTitle>
+          <CardTitle>Samenvatting</CardTitle> {/* Already sentence case */}
           {/* Edit/Cancel Button */}
           <Button variant="ghost" size="sm" onClick={handleEditToggle}>
             {isEditingSummary ? (
@@ -166,7 +166,7 @@ export default function FinalScreen({
       {/* Action Buttons Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Acties</CardTitle>
+          <CardTitle>Acties</CardTitle> {/* Already sentence case */}
           <CardDescription>Wat wilt u nu doen?</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap justify-center gap-4">
