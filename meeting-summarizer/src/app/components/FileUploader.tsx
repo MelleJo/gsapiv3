@@ -11,6 +11,7 @@ import { UploadCloud, FileAudio, Clock, Info, Loader2, CheckCircle } from 'lucid
 import AudioConverter from './AudioConverter';
 import { formatBytes } from '@/lib/enhancedAudioChunker';
 import { type PutBlobResult } from '@vercel/blob'; // Import PutBlobResult
+import { cn } from "@/lib/utils"; // Import the missing cn utility
 
 // Toggle to enable or disable FFmpeg conversion
 const ENABLE_FFMPEG_CONVERSION = true;
