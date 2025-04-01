@@ -410,16 +410,18 @@ In het stukje "bespreking details" in de tabel, daar ben je zo uitgebreid mogeli
 Per bv maak je een aparte tabel (indien er meerdere bv's zijn genoemd)
 
 | Risico                        | Besproken | Bespreking Details                  | Actie                             | Actie voor    |
-|-------------------------------|-----------|--------------------------------------|-----------------------------------|---------------|
+|-------------------------------|:----------:|--------------------------------------|-----------------------------------|:--------------:|
 | [Risico 1]                    | [Ja/Nee]  | [Details]                            | [Actie]                           | [Persoon]     |
 | [Risico 2]                    | [Ja/Nee]  | [Details]                            | [Actie]                           | [Persoon]     |
 
 **Privé Risico's**:
 
 | Risico                        | Besproken | Bespreking Details                  | Actie                             | Actie voor    |
-|-------------------------------|-----------|--------------------------------------|-----------------------------------|---------------|
+|-------------------------------|:----------:|--------------------------------------|-----------------------------------|:--------------:|
 | [Risico 1]                    | [Ja/Nee]  | [Details]                            | [Actie]                           | [Persoon]     |
 | [Risico 2]                    | [Ja/Nee]  | [Details]                            | [Actie]                           | [Persoon]     |
+
+**BELANGRIJK**: Zorg ervoor dat de tabel correct is geformatteerd in Markdown, inclusief de scheidingslijn met streepjes (bijv. '|---|---|...') direct onder de koptekstrij.
 
 **Samenvatting in punten**:
 Geef de belangrijkste informatie, afspraken, details, cijfers, en andere informatie die je niet wilt missen in bullet points weer.

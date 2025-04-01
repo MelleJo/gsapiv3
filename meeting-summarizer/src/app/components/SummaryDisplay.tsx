@@ -32,13 +32,15 @@ const MyHr = ({ ...props }) => <hr className="my-6 border-t border-gray-200" {..
 const isPipeTableRow = (line: string): boolean => {
   const trimmed = line.trim();
   // Must start and end with '|' and contain at least one more '|' inside
-  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.slice(1, -1).includes('|');
+  // Also check it doesn't look like a markdown separator line |---|---|
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.slice(1, -1).includes('|') && !trimmed.match(/^\|-*\|(?:-*\|)*$/);
 };
 
 // Helper function to parse a pipe-separated row into cells
 const parsePipeRow = (line: string): string[] => {
   return line.trim().slice(1, -1).split('|').map(cell => cell.trim());
 };
+
 
 interface SummaryDisplayProps {
   summary: string;
@@ -70,20 +72,44 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
     let currentMarkdown = '';
 
     lines.forEach((line) => {
+      // Skip empty lines or lines that are just markdown table separators
+      if (!line.trim() || line.trim().match(/^\|-*\|(?:-*\|)*$/)) {
+         // If we were building markdown, add it before skipping
+         if (currentMarkdown) {
+            result.push({ type: 'markdown', content: currentMarkdown }); // Keep trailing newlines for spacing
+            currentMarkdown = '';
+         }
+         // If we were building a table, add it before skipping
+         if (currentTable) {
+             result.push({ type: 'table', content: currentTable });
+             currentTable = null;
+         }
+         // Add the separator/empty line as markdown if it's not part of table detection logic
+         if (!line.trim().match(/^\|-*\|(?:-*\|)*$/)) {
+             currentMarkdown += line + '\n';
+         }
+         return; // Skip processing this line further
+      }
+
+
       if (isPipeTableRow(line)) {
         if (currentMarkdown) {
-          result.push({ type: 'markdown', content: currentMarkdown.trim() });
+          // Add pending markdown block (trim end only to preserve internal structure)
+          result.push({ type: 'markdown', content: currentMarkdown.replace(/\n$/, '') });
           currentMarkdown = '';
         }
         if (!currentTable) {
-          currentTable = [];
+          currentTable = []; // Start a new table
         }
         currentTable.push(parsePipeRow(line));
       } else {
+        // This line is not a table row
         if (currentTable) {
+          // Finalize the previous table block
           result.push({ type: 'table', content: currentTable });
           currentTable = null;
         }
+        // Add line to the current markdown block
         currentMarkdown += line + '\n';
       }
     });
@@ -93,7 +119,8 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       result.push({ type: 'table', content: currentTable });
     }
     if (currentMarkdown) {
-      result.push({ type: 'markdown', content: currentMarkdown.trim() });
+       // Add remaining markdown block (trim end only)
+      result.push({ type: 'markdown', content: currentMarkdown.replace(/\n$/, '') });
     }
 
     return result;
@@ -150,26 +177,34 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       </CardHeader>
 
       <CardContent className="p-6">
-        <div ref={contentRef} className="prose prose-sm max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+         {/* Container without prose classes */}
+        <div ref={contentRef} className="max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar text-sm"> {/* Added text-sm for base size */}
           {parsedContent.map((item, index) => {
+            // Render Table Block
             if (item.type === 'table' && Array.isArray(item.content) && item.content.length > 0) {
               const headers = item.content[0];
               const rows = item.content.slice(1);
+              // Basic check if the first row looks like headers (optional, but good practice)
+              const hasHeaders = headers.length > 0; // Assuming first row is always header
+
               return (
                 <MyTable key={`table-${index}`}>
-                  <MyThead>
-                    <MyTr>
-                      {headers.map((header, hIndex) => (
-                        <MyTh key={`th-${index}-${hIndex}`}>{header}</MyTh>
-                      ))}
-                    </MyTr>
-                  </MyThead>
+                  {hasHeaders && (
+                    <MyThead>
+                      <MyTr>
+                        {headers.map((header, hIndex) => (
+                          <MyTh key={`th-${index}-${hIndex}`}>{header}</MyTh>
+                        ))}
+                      </MyTr>
+                    </MyThead>
+                  )}
                   <MyTbody>
-                    {rows.map((row, rIndex) => (
+                    {/* Render rows starting from index 0 if no headers, 1 otherwise */}
+                    {(hasHeaders ? rows : item.content).map((row, rIndex) => (
                       <MyTr key={`tr-${index}-${rIndex}`}>
                         {row.map((cell, cIndex) => (
                           <MyTd key={`td-${index}-${rIndex}-${cIndex}`}>
-                            {/* Render cell content as markdown to handle potential inline formatting */}
+                            {/* Render cell content using Markdown again */}
                             <Markdown options={markdownOptions}>{cell || ''}</Markdown>
                           </MyTd>
                         ))}
@@ -178,15 +213,15 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                   </MyTbody>
                 </MyTable>
               );
-            } else if (item.type === 'markdown' && typeof item.content === 'string') {
-              // Render regular markdown sections
+            // Render Markdown Block
+            } else if (item.type === 'markdown' && typeof item.content === 'string' && item.content.trim()) {
               return <Markdown key={`md-${index}`} options={markdownOptions}>{item.content}</Markdown>;
             }
-            return null; // Should not happen
+            // Skip rendering empty markdown blocks entirely
+            return null; // Return null for empty blocks or unhandled types
           })}
         </div>
       </CardContent>
-
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: hsl(var(--muted)); border-radius: 10px; } /* Use theme color */
