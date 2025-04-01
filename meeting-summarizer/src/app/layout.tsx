@@ -1,9 +1,10 @@
 // src/app/layout.tsx
 import { Inter } from 'next/font/google';
+import { Toaster } from "@/components/ui/sonner"; // Import Toaster
 import './globals.css';
 import type { Metadata } from 'next';
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-inter', 
@@ -40,7 +41,8 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <main>{children}</main>
-        <footer className="mt-auto py-6 text-center text-sm text-neutral-500">
+        <Toaster /> {/* Add Toaster component */}
+        <footer className="mt-auto py-6 text-center text-sm text-muted-foreground"> {/* Use theme color */}
           <p>© {new Date().getFullYear()} Super Kees Online - Powered by AI</p>
         </footer>
       </body>

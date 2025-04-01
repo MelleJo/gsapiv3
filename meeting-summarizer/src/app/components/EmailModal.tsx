@@ -1,14 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose, // Keep DialogClose if you want an explicit close button besides the 'X'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Loader2, Mail, Edit, Eye, Send, RotateCw, Plus, X as IconX } from 'lucide-react'; // Import icons
 
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
+// Removed MotionDiv definition
 
 interface EmailModalProps {
   isOpen: boolean;
@@ -40,7 +49,7 @@ export default function EmailModal({
   const [isFormatting, setIsFormatting] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null); // Keep ref for potential future use, though Dialog handles outside click
 
   // Format the summary as an email using the API or fallback
   const formatAsEmail = useCallback(async () => {
@@ -102,7 +111,7 @@ ${senderName || 'Super Kees Online'}`;
     } else if (!isOpen) {
        // Reset state when modal closes
        setEmailContent(''); setRecipients(''); setSubject('Vergaderingsamenvatting');
-       setAdditionalMessage(''); setSenderName(''); setIsPreview(false); setError(null);
+       setAdditionalMessage(''); setSenderName(''); setIsPreview(false); setError(null); setEmailList([]); setNewEmail(''); // Also reset email list and new email input
     }
   // Depend only on raw summary now
   }, [isOpen, summary, formatAsEmail]);
@@ -110,8 +119,8 @@ ${senderName || 'Super Kees Online'}`;
   // Other useEffects and handlers remain the same...
   useEffect(() => { if (recipients.trim()) { const emails = recipients.split(',').map(email => email.trim()).filter(email => email); setEmailList(emails); } else { setEmailList([]); } }, [recipients]);
   useEffect(() => { setRecipients(emailList.join(', ')); }, [emailList]);
-  useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (modalRef.current && !modalRef.current.contains(event.target as Node)) { onClose(); } }; if (isOpen) { document.addEventListener('mousedown', handleClickOutside); } return () => { document.removeEventListener('mousedown', handleClickOutside); }; }, [isOpen, onClose]);
-  useEffect(() => { if (isOpen) { document.body.style.overflow = 'hidden'; } else { document.body.style.overflow = 'auto'; } return () => { document.body.style.overflow = 'auto'; }; }, [isOpen]);
+  // Removed useEffect for outside click (Dialog handles this)
+  // Removed useEffect for body overflow (Dialog handles this)
   const validateEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const handleAddEmail = () => { if (!newEmail.trim()) return; if (!validateEmail(newEmail)) { setError('Het e-mailadres is ongeldig'); return; } if (emailList.includes(newEmail.trim())) { setError('Dit e-mailadres is al toegevoegd'); return; } setEmailList([...emailList, newEmail.trim()]); setNewEmail(''); setError(null); };
   const handleRemoveEmail = (emailToRemove: string) => setEmailList(emailList.filter(email => email !== emailToRemove));
@@ -129,154 +138,167 @@ ${senderName || 'Super Kees Online'}`;
     finally { setIsSending(false); }
   };
 
-  if (!isOpen) return null;
+  // Removed isOpen check, Dialog handles visibility
 
-  // --- RENDER LOGIC --- (Restored Full JSX)
+  // --- RENDER LOGIC --- (Using Shadcn Dialog)
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-60 flex items-center justify-center p-4">
-        <MotionDiv
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          ref={modalRef}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" // Added flex flex-col
-        >
-          {/* Header */}
-          <div className="flex justify-between items-center p-6 border-b border-neutral-200 flex-shrink-0">
-            <h2 className="text-xl font-semibold text-neutral-800">
-              {isPreview ? 'Voorbeeld van e-mail' : 'Verstuur samenvatting via e-mail'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="text-neutral-500 hover:text-neutral-700 transition-colors"
-              aria-label="Sluiten"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>
+            {isPreview ? 'Voorbeeld van e-mail' : 'Verstuur samenvatting via e-mail'}
+          </DialogTitle>
+          <DialogDescription>
+            {isPreview ? 'Controleer de e-mail voordat u verzendt.' : 'Voer de details in om de samenvatting te verzenden.'}
+          </DialogDescription>
+        </DialogHeader>
 
-          {/* Scrollable Content Area */}
-          <div className="p-6 overflow-y-auto flex-grow">
-            <AnimatePresence>
-              {error && (
-                <MotionDiv
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg"
-                >
-                  {error}
-                </MotionDiv>
-              )}
-            </AnimatePresence>
-
-            {isPreview ? (
-              // Preview Mode
-              <div className="bg-neutral-50 rounded-xl p-6 border border-neutral-200">
-                <div className="mb-4 pb-4 border-b border-neutral-200">
-                  <div className="text-sm text-neutral-500 mb-1">Van:</div>
-                  <div className="text-neutral-800">
-                    Super Kees Online{senderName ? ` (${senderName})` : ''}
-                  </div>
-                </div>
-
-                <div className="mb-4 pb-4 border-b border-neutral-200">
-                  <div className="text-sm text-neutral-500 mb-1">Aan:</div>
-                  <div className="text-neutral-800">
-                    {emailList.length > 0 ? emailList.join(', ') : '[Vul e-mailadressen in]'}
-                  </div>
-                </div>
-
-                <div className="mb-4 pb-4 border-b border-neutral-200">
-                  <div className="text-sm text-neutral-500 mb-1">Onderwerp:</div>
-                  <div className="font-medium text-neutral-800">{subject}</div>
-                </div>
-
-                {additionalMessage && (
-                  <div className="mb-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-neutral-700 rounded-r-lg whitespace-pre-wrap">
-                    {additionalMessage}
-                  </div>
-                )}
-
-                {/* Email Content (plain text rendering for preview) */}
-                <div className="whitespace-pre-wrap text-sm text-neutral-800">
-                  {emailContent}
-                </div>
-              </div>
-            ) : (
-              // Edit Mode
-              <>
-                {/* Recipients Input */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Ontvangers</label>
-                  <div className="flex gap-2 mb-2">
-                    <input type="text" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={handleKeyPress} placeholder="Voer een e-mailadres in" className="flex-1 px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <button onClick={handleAddEmail} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Toevoegen</button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {emailList.map((email, index) => (
-                      <div key={index} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full flex items-center">
-                        <span className="text-sm">{email}</span>
-                        <button onClick={() => handleRemoveEmail(email)} className="ml-2 text-blue-500 hover:text-blue-700" aria-label={`Verwijder ${email}`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-neutral-500 mt-1">Voeg meerdere e-mailadressen toe door na elk adres op "Toevoegen" te klikken</p>
-                </div>
-
-                {/* Subject Input */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Onderwerp</label>
-                  <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Onderwerp van de e-mail" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-
-                {/* Additional Message Textarea */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Persoonlijke boodschap (optioneel)</label>
-                  <textarea value={additionalMessage} onChange={(e) => setAdditionalMessage(e.target.value)} placeholder="Voeg een persoonlijke boodschap toe aan het begin van de e-mail" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" rows={3} />
-                </div>
-
-                {/* Sender Name Input */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Je naam (optioneel)</label>
-                  <input type="text" value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Je naam" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-
-                {/* Email Content Textarea */}
-                <div className="mb-4">
-                  <label className="flex items-center justify-between text-sm font-medium text-neutral-700 mb-1">
-                    <span>E-mailinhoud</span>
-                    <button onClick={formatAsEmail} disabled={isFormatting} className="text-blue-600 hover:text-blue-800 text-xs flex items-center disabled:text-blue-300">
-                      {isFormatting ? ( <> <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Formatteren... </> ) : ( <> <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5l6.74-6.76z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg> Opnieuw formatteren </> )}
-                    </button>
-                  </label>
-                  <textarea value={emailContent} onChange={(e) => setEmailContent(e.target.value)} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" rows={12} />
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Footer Actions */}
-          <div className="p-6 border-t border-neutral-200 bg-neutral-50 flex justify-between flex-shrink-0">
-            <button onClick={() => setIsPreview(!isPreview)} className="px-4 py-2 border border-neutral-300 rounded-lg text-neutral-700 hover:bg-neutral-100 transition-colors flex items-center">
-              {isPreview ? ( <> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> Bewerken </> ) : ( <> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg> Voorbeeld </> )}
-            </button>
-            <div className="flex space-x-3">
-              <button onClick={onClose} className="px-4 py-2 border border-neutral-300 rounded-lg text-neutral-700 hover:bg-neutral-100 transition-colors">Annuleren</button>
-              <button onClick={handleSendEmail} disabled={isSending} className={`px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all ${ isSending ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-md' }`}>
-                {isSending ? ( <> <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Verzenden... </> ) : ( <> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg> Versturen naar {emailList.length} {emailList.length === 1 ? 'ontvanger' : 'ontvangers'} </> )}
-              </button>
+        {/* Scrollable Content Area */}
+        <div className="p-1 pr-3 overflow-y-auto flex-grow space-y-4">
+          {error && (
+            <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+              {error}
             </div>
-          </div>
-        </MotionDiv>
-      </div>
-    </AnimatePresence>
+          )}
+
+          {isPreview ? (
+            // Preview Mode
+            <div className="bg-muted/50 rounded-lg p-4 border space-y-3 text-sm">
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Van:</span>
+                <span>Super Kees Online{senderName ? ` (${senderName})` : ''}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Aan:</span>
+                <span className="text-right break-all">{emailList.length > 0 ? emailList.join(', ') : '[Geen ontvangers]'}</span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Onderwerp:</span>
+                <span className="font-medium">{subject}</span>
+              </div>
+              {additionalMessage && (
+                <div className="p-3 bg-primary/10 border-l-4 border-primary text-primary-foreground rounded-r-lg whitespace-pre-wrap">
+                  {additionalMessage}
+                </div>
+              )}
+              <div className="whitespace-pre-wrap pt-2">
+                {emailContent}
+              </div>
+            </div>
+          ) : (
+            // Edit Mode
+            <>
+              {/* Recipients Input */}
+              <div className="space-y-2">
+                <Label htmlFor="recipients-input">Ontvangers</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="recipients-input"
+                    type="email" // Use email type for better mobile keyboards
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    placeholder="Voer een e-mailadres in"
+                    className="flex-1"
+                  />
+                  <Button type="button" onClick={handleAddEmail} variant="secondary">
+                    <Plus className="h-4 w-4 mr-1" /> Toevoegen
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {emailList.map((email, index) => (
+                    <div key={index} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full flex items-center text-xs">
+                      <span>{email}</span>
+                      <button onClick={() => handleRemoveEmail(email)} className="ml-1.5 text-muted-foreground hover:text-foreground" aria-label={`Verwijder ${email}`}>
+                        <IconX className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Voeg meerdere e-mailadressen toe.</p>
+              </div>
+
+              {/* Subject Input */}
+              <div className="space-y-2">
+                <Label htmlFor="subject-input">Onderwerp</Label>
+                <Input
+                  id="subject-input"
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Onderwerp van de e-mail"
+                />
+              </div>
+
+              {/* Additional Message Textarea */}
+              <div className="space-y-2">
+                <Label htmlFor="message-input">Persoonlijke boodschap (optioneel)</Label>
+                <Textarea
+                  id="message-input"
+                  value={additionalMessage}
+                  onChange={(e) => setAdditionalMessage(e.target.value)}
+                  placeholder="Voeg een persoonlijke boodschap toe..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Sender Name Input */}
+              <div className="space-y-2">
+                <Label htmlFor="sender-name-input">Je naam (optioneel)</Label>
+                <Input
+                  id="sender-name-input"
+                  type="text"
+                  value={senderName}
+                  onChange={(e) => setSenderName(e.target.value)}
+                  placeholder="Je naam (voor de groet)"
+                />
+              </div>
+
+              {/* Email Content Textarea */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="content-input">E-mailinhoud</Label>
+                  <Button variant="link" size="sm" onClick={formatAsEmail} disabled={isFormatting} className="text-xs h-auto p-0">
+                    {isFormatting ? (
+                      <><Loader2 className="animate-spin mr-1 h-3 w-3" /> Formatteren...</>
+                    ) : (
+                      <><RotateCw className="mr-1 h-3 w-3" /> Opnieuw formatteren</>
+                    )}
+                  </Button>
+                </div>
+                <Textarea
+                  id="content-input"
+                  value={emailContent}
+                  onChange={(e) => setEmailContent(e.target.value)}
+                  rows={10} // Adjusted rows
+                  className="min-h-[150px]" // Ensure min height
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <DialogFooter className="pt-4 border-t">
+          <Button variant="outline" onClick={() => setIsPreview(!isPreview)}>
+            {isPreview ? (
+              <><Edit className="mr-2 h-4 w-4" /> Bewerken</>
+            ) : (
+              <><Eye className="mr-2 h-4 w-4" /> Voorbeeld</>
+            )}
+          </Button>
+          <DialogClose asChild>
+            <Button variant="ghost">Annuleren</Button>
+          </DialogClose>
+          <Button onClick={handleSendEmail} disabled={isSending || emailList.length === 0}>
+            {isSending ? (
+              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Verzenden...</>
+            ) : (
+              <><Send className="mr-2 h-4 w-4" /> Versturen naar {emailList.length}</>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2,25 +2,13 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef, ReactNode } from 'react'; // Import ReactNode
-import Markdown from 'markdown-to-jsx'; // Import markdown-to-jsx
+import React, { ReactNode } from 'react'; // Removed forwardRef, HTMLAttributes
+import Markdown from 'markdown-to-jsx';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
+import { Button } from "@/components/ui/button"; // Import Button
+import { Copy, Check, Loader2 } from 'lucide-react'; // Import icons
 
-// Define MotionDiv and MotionButton components
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
-
-type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
-  onClick?: () => void;
-  type?: "button" | "submit" | "reset";
-};
-const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
-  <motion.button ref={ref} {...props} />
-));
-MotionButton.displayName = 'MotionButton';
+// Removed MotionDiv and MotionButton definitions
 
 // --- Custom Components for Markdown Overrides ---
 // Add ReactNode type for children
@@ -52,7 +40,7 @@ interface SummaryDisplayProps {
 
 export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null); // Keep ref if needed for other purposes
 
   // Copy function - copies raw markdown for now
   // TODO: Re-implement pre-formatted text copy logic if needed later
@@ -66,36 +54,45 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
 
 
   // Loading state
-  if (isLoading) { return ( <div className="bg-white rounded-2xl shadow-lg p-6"><div className="animate-pulse">...</div></div> ); }
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Samenvatting Laden...</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 animate-pulse">
+            <div className="h-4 bg-muted rounded w-3/4"></div>
+            <div className="h-4 bg-muted rounded w-full"></div>
+            <div className="h-4 bg-muted rounded w-5/6"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   // No summary
   if (!summary) { return null; }
 
-  // Animation variants
-  const containerVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
-  const buttonVariants = { hover: { scale: 1.05 }, tap: { scale: 0.95 } };
+  // Removed animation variants
 
   return (
-    <MotionDiv variants={containerVariants} initial="hidden" animate="visible" className="bg-white rounded-2xl shadow-xl overflow-hidden">
-      {/* Header */}
-      <div className="relative bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 text-white">
-        <h2 className="text-2xl font-bold flex items-center pr-12">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">...</svg>
+    <Card className="overflow-hidden"> {/* Apply overflow hidden to card */}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30 border-b">
+        <CardTitle className="text-xl font-semibold">
           Samenvatting
-        </h2>
-        {/* Tooltip */}
-        <AnimatePresence> {copied && ( <MotionDiv className="absolute top-16 right-8 ...">Gekopieerd!</MotionDiv> )} </AnimatePresence>
-        {/* Copy button */}
-        <MotionButton variants={buttonVariants} whileHover="hover" whileTap="tap" onClick={copyToClipboard} className="absolute top-6 right-6 ..." title="Kopiëren" type="button">
-          {copied ? ( <svg>...</svg> ) : ( <svg>...</svg> )}
-        </MotionButton>
-      </div>
+        </CardTitle>
+        <Button variant="ghost" size="icon" onClick={copyToClipboard} aria-label="Kopieer samenvatting">
+          {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+        </Button>
+      </CardHeader>
 
-      {/* Content area - Use markdown-to-jsx */}
-      <div className="p-8">
-        <div ref={contentRef} className="summary-content max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+      <CardContent className="p-6"> {/* Use CardContent for padding */}
+        <div ref={contentRef} className="prose prose-sm max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar"> {/* Use Tailwind Prose for basic styling */}
            {/* Render Markdown using markdown-to-jsx with overrides */}
+           {/* Consider simplifying overrides if Tailwind Prose provides enough styling */}
            <Markdown options={{
                overrides: {
+                   // Keep table overrides for specific styling
                    table: { component: MyTable },
                    thead: { component: MyThead },
                    tbody: { component: MyTbody },
@@ -110,22 +107,29 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
                    h3: { component: MyH3 },
                    strong: { component: MyStrong },
                    hr: { component: MyHr },
-                   // Add overrides for other elements if default styling is not desired
+                   // Remove overrides for p, ul, ol, li, h2, h3, strong, hr if Prose is sufficient
+                   // p: { component: MyP },
+                   // ul: { component: MyUl },
+                   // ol: { component: MyOl },
+                   // li: { component: MyLi },
+                   // h2: { component: MyH2 },
+                   // h3: { component: MyH3 },
+                   // strong: { component: MyStrong },
+                   // hr: { component: MyHr },
                }
            }}>
                {summary}
            </Markdown>
          </div>
-       </div>
+       </CardContent>
 
-      {/* Styles */}
+      {/* Styles - Keep scrollbar style */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-        /* Removed global table styles - handled by overrides now */
+        .custom-scrollbar::-webkit-scrollbar-track { background: hsl(var(--muted)); border-radius: 10px; } /* Use theme color */
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 10px; } /* Use theme color */
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: hsl(var(--input)); } /* Use theme color */
        `}</style>
-     </MotionDiv>
+     </Card>
    );
 }

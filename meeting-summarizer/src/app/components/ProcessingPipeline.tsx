@@ -1,19 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
-
-// Define proper types for motion components
-type MotionProps = any;
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
+import React from 'react';
+import { AnimatePresence, motion } from 'framer-motion'; // Keep framer-motion for step animation
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { X as IconX, Check, Loader2, FileText, BrainCircuit, UploadCloud, Settings2, CheckCircle } from 'lucide-react'; // Import icons
 
 // Pipeline stages
-export type PipelineStage = 
+export type PipelineStage =
   | 'uploading'     // File is being uploaded to Vercel Blob
   | 'processing'    // Audio file is being processed (converted if needed)
   | 'chunking'      // File is being split into chunks if needed
@@ -50,7 +46,7 @@ export default function ProcessingPipeline({
 }: ProcessingPipelineProps) {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Start timer when active
   useEffect(() => {
     if (isActive) {
@@ -64,7 +60,7 @@ export default function ProcessingPipeline({
       }
       setElapsedTime(0);
     }
-    
+
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -76,31 +72,26 @@ export default function ProcessingPipeline({
   useEffect(() => {
     if (isActive && status.stage !== 'completed' && status.stage !== 'error') {
       const updateInterval = setInterval(() => {
-        if (status.estimatedTimeLeft) {
-          const newEstimate = Math.max(1, status.estimatedTimeLeft - 1);
-          
-          // Update the estimated time left without waiting for the parent component
+        if (status.estimatedTimeLeft && status.estimatedTimeLeft > 0) { // Check if > 0
+          const newEstimate = Math.max(0, status.estimatedTimeLeft - 1); // Can go to 0
+          // Directly mutate status prop - might be better to lift state or use callback
           status.estimatedTimeLeft = newEstimate;
         }
       }, 1000); // Update every second
-      
+
       return () => clearInterval(updateInterval);
     }
-  }, [isActive, status]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, status.stage, status.estimatedTimeLeft]); // Added dependencies
 
   // Format time for display
   const formatTime = (seconds: number): string => {
-    // Round to nearest integer for cleaner display
     const roundedSeconds = Math.round(seconds);
-    
     if (roundedSeconds < 60) {
       return `${roundedSeconds} sec`;
     }
-    
     const mins = Math.floor(roundedSeconds / 60);
     const secs = roundedSeconds % 60;
-    
-    // Only show minutes if it's actually more than a minute
     return `${mins}:${secs.toString().padStart(2, '0')} min`;
   };
 
@@ -120,28 +111,29 @@ export default function ProcessingPipeline({
 
   // Get stage description
   const getStageDescription = (): string => {
+    if (status.error && status.stage === 'error') return status.error; // Show error message if present
     if (status.message) return status.message;
-    
+
     switch (status.stage) {
-      case 'uploading': 
+      case 'uploading':
         return 'Uw bestand wordt geüpload naar onze beveiligde servers...';
-      case 'processing': 
+      case 'processing':
         return 'Audiobestand wordt geoptimaliseerd voor transcriptie...';
-      case 'chunking': 
+      case 'chunking':
         return status.details?.totalChunks && status.details.totalChunks > 1
           ? `Bestand wordt opgesplitst in ${status.details.totalChunks} delen voor verwerking...`
           : 'Bestand wordt voorbereid voor transcriptie...';
-      case 'transcribing': 
+      case 'transcribing':
         return status.details?.currentChunk && status.details?.totalChunks
           ? `Transcriberen deel ${status.details.currentChunk}/${status.details.totalChunks}...`
           : 'Spraak wordt omgezet naar tekst...';
-      case 'summarizing': 
+      case 'summarizing':
         return 'AI analyseert transcriptie en genereert een samenvatting...';
-      case 'completed': 
+      case 'completed':
         return 'Alle verwerkingsstappen zijn voltooid!';
-      case 'error': 
-        return status.error || 'Er is een fout opgetreden tijdens de verwerking.';
-      default: 
+      case 'error': // Fallback error message
+        return 'Er is een onbekende fout opgetreden tijdens de verwerking.';
+      default:
         return 'Bezig met verwerken...';
     }
   };
@@ -149,154 +141,144 @@ export default function ProcessingPipeline({
   // Convert stage to numerical index for progress bar
   const getStageIndex = (): number => {
     const stages: PipelineStage[] = ['uploading', 'processing', 'chunking', 'transcribing', 'summarizing', 'completed'];
-    return stages.indexOf(status.stage);
+    const index = stages.indexOf(status.stage);
+    // If stage is 'error' or not found, return a value indicating progress stopped before completion
+    if (index === -1 || status.stage === 'error') {
+        // Find the last non-error/non-completed stage if possible
+        const lastKnownGoodIndex = stages.indexOf(status.stage === 'error' ? (stages[stages.length-2]) : status.stage); // A bit complex, might need refinement based on actual error flow
+        return lastKnownGoodIndex !== -1 ? lastKnownGoodIndex : 0; // Default to 0 if error occurs very early
+    }
+    return index;
   };
+
 
   // Calculate overall progress across all stages
   const calculateOverallProgress = (): number => {
-    const totalStages = 5; // Upload, process, chunk, transcribe, summarize
+    const totalStages = 5; // Upload, process/chunk, transcribe, summarize
     const stageIndex = getStageIndex();
     const stageProgress = status.progress / 100;
-    
+
     if (status.stage === 'completed') return 100;
-    if (status.stage === 'error') return 0;
-    
-    // Each stage contributes 1/totalStages to the overall progress
+    // If error, show progress up to the point of error
+    if (status.stage === 'error') {
+        return Math.min(100, Math.round(((stageIndex + stageProgress) / totalStages) * 100));
+    }
+
     return Math.min(100, Math.round(((stageIndex + stageProgress) / totalStages) * 100));
   };
 
-  if (!isActive) return null;
 
   return (
     <AnimatePresence>
       {isActive && (
-        <MotionDiv 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-white bg-opacity-90 backdrop-blur-sm z-50 flex items-center justify-center"
+        // Use standard div with fade transition (can add framer-motion later if needed)
+        <div
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300"
+          style={{ opacity: isActive ? 1 : 0 }} // Simple fade
         >
-          <div className="w-full max-w-3xl px-6">
-            <div className="bg-white rounded-2xl shadow-xl p-8 relative">
-              {/* Header with pipeline stage name */}
-              <div className="mb-6 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800">
+          <Card className="w-full max-w-2xl shadow-2xl"> {/* Use Card */}
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b"> {/* Adjust header layout */}
+              <div className="space-y-1">
+                <CardTitle className="text-xl"> {/* Adjust title size */}
                   {getStageName()}
-                </h2>
-                
-                <div className="flex items-center gap-3">
-                  <div className="text-sm text-gray-500">
-                    Verstreken tijd: {formatTime(elapsedTime)}
-                  </div>
-                  
-                  {onCancel && status.stage !== 'completed' && (
-                    <button 
-                      onClick={onCancel}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                      aria-label="Annuleren"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                </CardTitle>
+                <CardDescription>
+                  Verstreken tijd: {formatTime(elapsedTime)}
+                </CardDescription>
               </div>
-              
+              {onCancel && status.stage !== 'completed' && status.stage !== 'error' && ( // Don't show cancel on completed/error
+                <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Annuleren">
+                  <IconX className="h-5 w-5" />
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6"> {/* Add spacing */}
               {/* Status message */}
-              <p className="text-gray-600 mb-6">
+              <p className={`text-center ${status.stage === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
                 {getStageDescription()}
               </p>
-              
+
               {/* File details if available */}
               {status.details?.fileName && (
-                <div className="bg-blue-50 rounded-lg p-3 mb-6 flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                  </svg>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-blue-700 truncate">{status.details.fileName}</div>
+                <div className="bg-muted/50 rounded-lg p-3 flex items-center text-sm">
+                  <FileText className="h-5 w-5 text-primary mr-3 flex-shrink-0" />
+                  <div className="flex-1 overflow-hidden">
+                    <div className="font-medium truncate">{status.details.fileName}</div>
                     {status.details.fileSize && (
-                      <div className="text-xs text-blue-500">
+                      <div className="text-xs text-muted-foreground">
                         {(status.details.fileSize / (1024 * 1024)).toFixed(2)} MB
                       </div>
                     )}
                   </div>
                 </div>
               )}
-              
-              {/* Single progress bar */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">Voortgang</span>
-                  <div className="flex items-center gap-2">
-                    {status.stage !== 'completed' && status.stage !== 'error' && (
-                      <MotionDiv
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ repeat: Infinity, duration: 1.5 }}
-                        className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                      />
-                    )}
-                    <span className="text-sm font-medium text-gray-700">{calculateOverallProgress()}%</span>
+
+              {/* Single progress bar - Hide on error/completed */}
+              {status.stage !== 'completed' && status.stage !== 'error' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Voortgang</span>
+                    <div className="flex items-center gap-2 font-medium">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" /> {/* Use Loader icon */}
+                      <span>{calculateOverallProgress()}%</span>
+                    </div>
                   </div>
+                  <Progress value={calculateOverallProgress()} className="w-full h-2" /> {/* Use Progress component */}
                 </div>
-                <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
-                  <MotionDiv 
-                    className="h-full bg-gradient-to-r from-blue-600 to-purple-600"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${calculateOverallProgress()}%` }}
-                    transition={{ type: 'spring', stiffness: 50, damping: 15 }}
-                  />
-                </div>
-              </div>
-              
-              {/* Time estimate if available */}
-              {status.estimatedTimeLeft !== undefined && status.stage !== 'completed' && status.stage !== 'error' && (
-                <div className="text-center text-sm text-gray-500 mb-6">
+              )}
+
+              {/* Time estimate if available - Hide on error/completed */}
+              {status.estimatedTimeLeft !== undefined && status.estimatedTimeLeft > 0 && status.stage !== 'completed' && status.stage !== 'error' && (
+                <div className="text-center text-sm text-muted-foreground">
                   <span>
                     Geschatte resterende tijd: {formatTime(status.estimatedTimeLeft)}
                   </span>
                 </div>
               )}
-              
+
               {/* Pipeline visualization */}
-              <div className="mt-8">
+              <div className="pt-4">
                 <div className="relative">
-                  <div className="absolute left-0 right-0 top-6 h-0.5 bg-gray-200"></div>
+                  {/* Line behind steps */}
+                  <div className="absolute left-0 right-0 top-5 h-0.5 bg-border"></div>
+                  {/* Steps */}
                   <div className="flex justify-between relative">
-                    <PipelineStepIndicator 
+                    <PipelineStepIndicator
                       label="Uploaden"
+                      icon={<UploadCloud className="h-5 w-5" />}
                       completed={getStageIndex() > 0}
                       active={status.stage === 'uploading'}
                     />
-                    <PipelineStepIndicator 
+                    <PipelineStepIndicator
                       label="Verwerken"
+                      icon={<Settings2 className="h-5 w-5" />}
                       completed={getStageIndex() > 1}
                       active={status.stage === 'processing' || status.stage === 'chunking'}
                     />
-                    <PipelineStepIndicator 
+                    <PipelineStepIndicator
                       label="Transcriberen"
+                      icon={<FileText className="h-5 w-5" />}
                       completed={getStageIndex() > 3}
                       active={status.stage === 'transcribing'}
                     />
-                    <PipelineStepIndicator 
+                    <PipelineStepIndicator
                       label="Samenvatten"
+                      icon={<BrainCircuit className="h-5 w-5" />}
                       completed={getStageIndex() > 4}
                       active={status.stage === 'summarizing'}
                     />
-                    <PipelineStepIndicator 
+                    <PipelineStepIndicator
                       label="Voltooid"
+                      icon={<CheckCircle className="h-5 w-5" />}
                       completed={status.stage === 'completed'}
-                      active={false}
+                      active={false} // Completed is never 'active' in this sense
                     />
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </MotionDiv>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </AnimatePresence>
   );
@@ -305,38 +287,35 @@ export default function ProcessingPipeline({
 // Sub-component for pipeline step indicators
 function PipelineStepIndicator({
   label,
+  icon, // Added icon to destructuring
   completed,
   active
 }: {
   label: string;
+  icon: React.ReactNode; // Accept icon as prop
   completed: boolean;
   active: boolean;
 }) {
+  const stateClasses = completed
+    ? 'bg-primary border-primary text-primary-foreground' // Completed state
+    : active
+    ? 'bg-background border-primary text-primary ring-2 ring-primary/30 ring-offset-2 ring-offset-background' // Active state with ring
+    : 'bg-background border-border text-muted-foreground'; // Default state
+
   return (
-    <div className="flex flex-col items-center z-10">
-      <MotionDiv
-        className={`w-12 h-12 rounded-full flex items-center justify-center z-10 border-2 ${
-          completed
-            ? 'bg-blue-600 border-blue-600 text-white'
-            : active
-            ? 'bg-white border-blue-500 text-blue-500'
-            : 'bg-white border-gray-300 text-gray-400'
-        }`}
-        animate={active ? { 
-          scale: [1, 1.05, 1],
-          boxShadow: ['0 0 0 0 rgba(59, 130, 246, 0)', '0 0 0 4px rgba(59, 130, 246, 0.3)', '0 0 0 0 rgba(59, 130, 246, 0)']
-        } : {}}
-        transition={{ duration: 2, repeat: active ? Infinity : 0 }}
+    <div className="flex flex-col items-center z-10 text-center w-16"> {/* Added width */}
+      {/* Use motion.div for animation */}
+      <motion.div
+        animate={active ? { scale: [1, 1.1, 1] } : {}} // Simplified animation
+        transition={{ duration: 1.5, repeat: active ? Infinity : 0 }}
       >
-        {completed ? (
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        ) : (
-          <span className="text-sm">{label.charAt(0)}</span>
-        )}
-      </MotionDiv>
-      <span className={`mt-2 text-xs ${completed ? 'text-blue-600 font-medium' : active ? 'text-blue-500 font-medium' : 'text-gray-500'}`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center z-10 border-2 transition-colors duration-300 ${stateClasses}`}>
+          {completed ? <Check className="h-5 w-5" /> : icon} {/* Correct icon reference */}
+        </div>
+      </motion.div>
+      <span className={`mt-2 text-xs font-medium transition-colors duration-300 ${
+        completed ? 'text-primary' : active ? 'text-primary' : 'text-muted-foreground'
+      }`}>
         {label}
       </span>
     </div>

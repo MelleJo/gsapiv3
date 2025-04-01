@@ -2,17 +2,15 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardFooter
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Settings, Mail, RotateCcw, FileText, Trash2 } from 'lucide-react'; // Import icons
 import SummaryDisplay from './SummaryDisplay';
 import SummaryActions from './SummaryActions';
 
-// Create properly typed motion components
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
+// Removed MotionDiv definition
 
 interface FinalScreenProps {
   summary: string; // Only raw summary prop needed
@@ -48,47 +46,82 @@ export default function FinalScreen({
   onRegenerateSummary,
   onRegenerateTranscript
 }: FinalScreenProps) {
-  const [showTranscript, setShowTranscript] = useState<boolean>(false);
+  // Removed showTranscript state, Accordion handles its own state
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pt-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 shadow-md">
-        {/* ... Header content ... */}
-         <div className="flex items-center mb-4 md:mb-0">...</div>
-         <div className="flex items-center space-x-3">...</div>
-      </div>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      {/* Header Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Verwerking Voltooid</CardTitle>
+          <CardDescription>Bestand: {audioFileName}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row justify-between items-center gap-4">
+           <p className="text-sm text-muted-foreground">Hier is uw samenvatting en transcriptie.</p>
+           <Button variant="outline" size="icon" onClick={onToggleSettings} aria-label="Instellingen">
+             <Settings className="h-4 w-4" />
+           </Button>
+        </CardContent>
+      </Card>
 
-      {/* Main content area */}
-      <div className="grid grid-cols-1 gap-8">
-      {/* Summary section */}
-      <div className="mb-6">
-        {/* Pass only summary */}
-        <SummaryDisplay summary={summary} isLoading={isSummarizing} />
-      </div>
+      {/* Summary Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Samenvatting</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Pass only summary */}
+          <SummaryDisplay summary={summary} isLoading={isSummarizing} />
+        </CardContent>
+        {/* Summary actions integrated into Footer */}
+        {summary && !isSummarizing && (
+          <CardFooter className="flex flex-wrap gap-2 justify-end">
+             {/* Integrate SummaryActions directly or replicate buttons */}
+             <Button variant="ghost" onClick={onOpenEmailModal}>
+               <Mail className="mr-2 h-4 w-4" /> E-mail Samenvatting
+             </Button>
+             {/* Add refine/edit button if needed from SummaryActions */}
+          </CardFooter>
+        )}
+      </Card>
 
-      {/* Summary actions */}
-      {/* Check summary for existence */}
-      {summary && !isSummarizing && (
-      <div className="mb-8">
-        <SummaryActions
-          summary={summary} // Pass raw summary
-          transcription={transcription}
-          onRefinedSummary={onRefinedSummary}
-          onOpenEmailModal={onOpenEmailModal}
-        />
-      </div>
+
+      {/* Transcription Accordion */}
+      {transcription && (
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="item-1">
+            <AccordionTrigger>Bekijk Transcriptie</AccordionTrigger>
+            <AccordionContent>
+              <Card className="mt-4">
+                <CardContent className="p-4 max-h-96 overflow-y-auto text-sm bg-muted/30 rounded-md">
+                  <pre className="whitespace-pre-wrap font-sans">{transcription}</pre>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
 
-      {/* Transcription */}
-      {transcription && ( <div className="mb-8"> ... </div> )}
+      {/* Action Buttons Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Acties</CardTitle>
+          <CardDescription>Wat wilt u nu doen?</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap justify-center gap-4">
+          <Button variant="outline" onClick={onRegenerateSummary} disabled={isSummarizing || isTranscribing}>
+            <RotateCcw className="mr-2 h-4 w-4" /> Samenvatting Opnieuw Genereren
+          </Button>
+          <Button variant="outline" onClick={onRegenerateTranscript} disabled={isSummarizing || isTranscribing}>
+            <FileText className="mr-2 h-4 w-4" /> Transcriptie Opnieuw Genereren
+          </Button>
+          <Button variant="destructive" onClick={onReset}>
+            <Trash2 className="mr-2 h-4 w-4" /> Opnieuw Beginnen
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap justify-center gap-4 mt-4 mb-12"> ... </div>
-      </div>
-
-      {/* Styles */}
-      <style jsx global>{`...`}</style>
+      {/* Removed style jsx global */}
     </div>
   );
 }

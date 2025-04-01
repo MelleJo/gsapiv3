@@ -1,15 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
+import { useState } from 'react'; // Removed useEffect
+import React from 'react'; // Removed HTMLAttributes, forwardRef
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
+import { cn } from "@/lib/utils"; // Import cn utility
 
-// Create properly typed motion component
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
+// Removed MotionDiv definition
 
 export interface PromptType {
   id: string;
@@ -476,23 +472,25 @@ Algemene richtlijnen:
 
   return (
     <div className="mb-8">
-      <h2 className="text-lg font-semibold text-neutral-700 mb-4">Selecteer een gesprekstype voor de samenvatting:</h2>
+      <h2 className="text-lg font-semibold text-foreground mb-4">Selecteer een gesprekstype voor de samenvatting:</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {promptTypes.map((promptType) => (
-          <MotionDiv
+          <Card
             key={promptType.id}
-            className={`p-4 rounded-xl cursor-pointer transition-colors ${
+            className={cn(
+              "cursor-pointer transition-all hover:shadow-md", // Base styles
               selectedPromptId === promptType.id
-                ? 'bg-gradient-to-r from-blue-100 to-indigo-100 border-2 border-blue-300'
-                : 'bg-white border border-neutral-200 hover:border-blue-200 hover:bg-blue-50'
-            }`}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+                ? 'border-primary ring-2 ring-primary/30' // Selected styles
+                : 'border-border hover:border-muted-foreground/50' // Default hover styles
+            )}
             onClick={() => handleSelectCard(promptType)}
           >
-            <h3 className="text-md font-medium text-neutral-800">{promptType.name}</h3>
-            <p className="text-sm text-neutral-600 mt-1">{promptType.description}</p>
-          </MotionDiv>
+            <CardHeader>
+              <CardTitle className="text-base">{promptType.name}</CardTitle> {/* Adjusted title size */}
+              <CardDescription className="text-sm">{promptType.description}</CardDescription>
+            </CardHeader>
+            {/* CardContent can be added if needed */}
+          </Card>
         ))}
       </div>
     </div>

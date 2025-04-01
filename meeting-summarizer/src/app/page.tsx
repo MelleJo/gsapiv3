@@ -4,12 +4,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, MotionProps } from 'framer-motion';
 import React, { HTMLAttributes, forwardRef } from 'react';
+import { Button } from "@/components/ui/button"; // Import Shadcn Button
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Import Shadcn Card components
 import FileUploader, { BlobFile as BlobFileInfo } from '@/app/components/FileUploader';
 import CustomAudioRecorder from '@/app/components/CustomAudioRecorder';
 import SummaryDisplay from '@/app/components/SummaryDisplay';
 import SummaryActions from '@/app/components/SummaryActions';
 import EmailModal from '@/app/components/EmailModal';
-import Notification, { NotificationType } from '@/app/components/Notification';
+// Removed Notification import
+import { toast } from "sonner"; // Import sonner toast
 import ProcessingPipeline, { PipelineStatus, PipelineStage } from './components/ProcessingPipeline';
 import PromptSelector from '@/app/components/PromptSelector';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
@@ -28,9 +31,7 @@ MotionH1.displayName = 'MotionH1';
 type MotionPProps = HTMLAttributes<HTMLParagraphElement> & MotionProps;
 const MotionP = forwardRef<HTMLParagraphElement, MotionPProps>((props, ref) => ( <motion.p ref={ref} {...props} /> ));
 MotionP.displayName = 'MotionP';
-type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & { onClick?: () => void; disabled?: boolean; type?: "button" | "submit" | "reset"; };
-const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => ( <motion.button ref={ref} {...props} /> ));
-MotionButton.displayName = 'MotionButton';
+// Removed MotionButton definition
 
 interface PromptType { id: string; name: string; description: string; prompt: string; }
 
@@ -54,7 +55,7 @@ export default function Home() {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(false);
-  const [notification, setNotification] = useState<{ type: NotificationType; message: string; isVisible: boolean; }>({ type: 'info', message: '', isVisible: false });
+  // Removed notification state
   const mainContainerRef = useRef<HTMLDivElement>(null);
 
   const clearProgressInterval = () => { if (progressIntervalRef.current) { clearInterval(progressIntervalRef.current); progressIntervalRef.current = null; } };
@@ -162,14 +163,33 @@ export default function Home() {
       // Removed client-side HTML conversion
   };
   const handleEmailNotification = (success: boolean, message: string) => showNotification(success ? 'success' : 'error', message);
-  const showNotification = (type: NotificationType, message: string) => setNotification({ type, message, isVisible: true });
-  const closeNotification = () => setNotification(prev => ({ ...prev, isVisible: false }));
+  // Updated showNotification to use sonner toast
+  const showNotification = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
+    switch (type) {
+      case 'success':
+        toast.success(message);
+        break;
+      case 'error':
+        toast.error(message);
+        break;
+      case 'warning':
+        toast.warning(message);
+        break;
+      case 'info':
+      default:
+        toast.info(message);
+        break;
+    }
+  };
+  // Removed closeNotification
 
-  const cardVariants = { /* ... */ };
+  // Removed cardVariants
 
   return (
-    <main ref={mainContainerRef} className="min-h-screen bg-neutral-50 pb-20">
-      <Notification type={notification.type} message={notification.message} isVisible={notification.isVisible} onClose={closeNotification} />
+    // Consider updating bg color in globals.css or layout.tsx later for better theme consistency
+    <main ref={mainContainerRef} className="min-h-screen bg-background text-foreground pb-20">
+      {/* Removed Notification component usage */}
+      {/* Use Shadcn Dialog for EmailModal later */}
       <EmailModal isOpen={isEmailModalOpen} onClose={handleCloseEmailModal} summary={summary} /* Pass only raw summary */ transcription={transcription} onSendEmail={handleEmailNotification} />
       <ProcessingPipeline isActive={pipelineActive} status={pipelineStatus} onCancel={handleCancelPipeline} />
 
@@ -202,23 +222,58 @@ export default function Home() {
              {/* Step 1: Audio Input Section */}
             <AnimatePresence mode="wait">
               {currentStep === 1 && (
-                <MotionDiv key="step1" variants={cardVariants} initial="hidden" animate="visible" exit="exit" className="mb-12">
-                     <div className="mb-8"> <PromptSelector onSelectPrompt={(prompt) => setSelectedPrompt(prompt)} selectedPromptId={selectedPrompt.id} /> </div>
-                     <div className="grid md:grid-cols-2 gap-6">
-                       <div className="bg-white rounded-2xl shadow-lg p-6 ..."> <CustomAudioRecorder onAudioRecorded={handleAudioCapture} /> </div>
-                       <div className="bg-white rounded-2xl shadow-lg p-6 ..."> <FileUploader onFileUploadComplete={handleFileUploadComplete} /> </div>
-                    </div>
-                    <div className="mt-8 flex justify-center">...</div>
-                </MotionDiv>
+                <motion.div key="step1" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+                  <Card className="mb-12">
+                    <CardHeader>
+                      <CardTitle>Stap 1: Audio Invoeren</CardTitle>
+                      <CardDescription>Kies een prompt, neem audio op of upload een bestand.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <PromptSelector onSelectPrompt={(prompt) => setSelectedPrompt(prompt)} selectedPromptId={selectedPrompt.id} />
+                      <div className="grid md:grid-cols-2 gap-6">
+                        {/* Wrap existing components in divs or directly style if needed */}
+                        <div><CustomAudioRecorder onAudioRecorded={handleAudioCapture} /></div>
+                        <div><FileUploader onFileUploadComplete={handleFileUploadComplete} /></div>
+                      </div>
+                    </CardContent>
+                    {/* Optional CardFooter if needed */}
+                  </Card>
+                </motion.div>
               )}
             </AnimatePresence>
-             {/* Step 2 Placeholder */}
-             <div id="transcribe-section" className="scroll-mt-24"> <AnimatePresence>{currentStep >= 2 && !summary && ( <MotionDiv key="step2-placeholder" variants={cardVariants} initial="hidden" animate="visible" exit="exit" className="mb-12">...</MotionDiv> )}</AnimatePresence> </div>
-             {/* Step 3 Placeholder */}
-              <div id="summary-section" className="scroll-mt-24"> <AnimatePresence>{currentStep >= 3 && !summary && ( <MotionDiv key="step3-placeholder" variants={cardVariants} initial="hidden" animate="visible" exit="exit">...</MotionDiv> )}</AnimatePresence> </div>
+             {/* Step 2 Placeholder - Use Card for consistency */}
+             <div id="transcribe-section" className="scroll-mt-24">
+               <AnimatePresence>
+                 {currentStep >= 2 && !summary && (
+                   <motion.div key="step2-placeholder" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+                     <Card className="mb-12 min-h-[200px] flex items-center justify-center">
+                       <CardContent>
+                         <p className="text-muted-foreground">Stap 2: Transcriptie wordt hier weergegeven...</p>
+                       </CardContent>
+                     </Card>
+                   </motion.div>
+                 )}
+               </AnimatePresence>
+             </div>
+             {/* Step 3 Placeholder - Use Card for consistency */}
+              <div id="summary-section" className="scroll-mt-24">
+                <AnimatePresence>
+                  {currentStep >= 3 && !summary && (
+                    <motion.div key="step3-placeholder" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+                      <Card className="mb-12 min-h-[200px] flex items-center justify-center">
+                        <CardContent>
+                          <p className="text-muted-foreground">Stap 3: Samenvatting wordt hier weergegeven...</p>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
               {/* Reset button */}
              {(currentStep > 1 || uploadedBlobInfo) && !summary && !pipelineActive && ( // Check summary state
-               <div className="flex justify-center mt-10"> <button onClick={handleReset}>...</button> </div>
+               <div className="flex justify-center mt-10">
+                 <Button variant="outline" onClick={handleReset}>Opnieuw Beginnen</Button>
+               </div>
              )}
            </div>
         </>

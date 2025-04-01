@@ -1,12 +1,15 @@
 // @ts-nocheck
 'use client';
 
-import React, { useRef, useState, forwardRef, HTMLAttributes, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react'; // Removed forwardRef, HTMLAttributes
 import type { ChangeEvent, DragEvent } from 'react';
-import { motion, MotionProps } from 'framer-motion';
-import { upload } from '@vercel/blob/client'; // Import the upload function
-import AudioConverter from './AudioConverter'; // Assuming path is correct
-import { formatBytes } from '@/lib/enhancedAudioChunker'; // Ensure path is correct
+// Removed motion import
+import { upload } from '@vercel/blob/client';
+import { Button } from "@/components/ui/button"; // Import Shadcn Button
+import { Progress } from "@/components/ui/progress"; // Import Shadcn Progress
+import { UploadCloud, FileAudio, Clock, Info, Loader2, CheckCircle } from 'lucide-react'; // Import icons
+import AudioConverter from './AudioConverter';
+import { formatBytes } from '@/lib/enhancedAudioChunker';
 import { type PutBlobResult } from '@vercel/blob'; // Import PutBlobResult
 
 // Toggle to enable or disable FFmpeg conversion
@@ -21,16 +24,7 @@ export interface BlobFile { // Export interface if used elsewhere
   originalName: string;
 }
 
-// Define motion button component with proper typing
-type MotionButtonProps = HTMLAttributes<HTMLButtonElement> & MotionProps & {
-  disabled?: boolean;
-  onClick?: () => void;
-};
-
-const MotionButton = forwardRef<HTMLButtonElement, MotionButtonProps>((props, ref) => (
-  <motion.button ref={ref} {...props} />
-));
-MotionButton.displayName = 'MotionButton';
+// Removed MotionButton definition
 
 interface FileUploaderProps {
   // Modified: Expects PutBlobResult now, let's rename to reflect Vercel Blob structure
@@ -239,8 +233,9 @@ export default function FileUploader({
 
   // Handle drag events (no changes needed here)
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => { /* ... */ };
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => { /* ... */ };
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => { /* ... */ };
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); }; // Necessary to allow drop
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -289,48 +284,39 @@ export default function FileUploader({
         onDrop={handleDrop}
       >
         {/* Inner content: Icon, text, file info (no changes needed) */}
-        <div className="flex flex-col items-center justify-center gap-2">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-10 w-10 text-neutral-400"
-            viewBox="0 0 24 24" /* Icon details */>
-            {/* SVG Path data */}
-             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-             <polyline points="17 8 12 3 7 8"></polyline>
-             <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
-          <h3 className="text-lg font-medium text-neutral-700">
+        {/* Inner content: Icon, text, file info */}
+        <div className="flex flex-col items-center justify-center gap-2 text-center">
+          <UploadCloud className={`h-12 w-12 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+          <h3 className="text-lg font-medium">
             Sleep een audiobestand hierheen
           </h3>
-          <p className="text-sm text-neutral-500 mb-2">
-            of <span className="text-blue-600 font-medium">klik om te bladeren</span>
+          <p className="text-sm text-muted-foreground mb-2">
+            of <span className="text-primary font-medium">klik om te bladeren</span>
           </p>
-          <p className="text-xs text-neutral-400">
-            Ondersteunde bestanden: MP3, WAV, FLAC, OGG, M4A, MP4, etc.
+          <p className="text-xs text-muted-foreground">
+            Ondersteunde bestanden: MP3, WAV, M4A, MP4, etc.
           </p>
           {fileInfo && (
-            <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700 flex flex-col w-full">
-              <div className="flex items-center mb-1">
-                <svg /* Mic icon */>
-                   <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                   <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                   <line x1="12" x2="12" y1="19" y2="22"></line>
-                </svg>
-                <span className="font-medium truncate ml-2">{fileName}</span>
+            <div className="mt-3 p-3 bg-muted/50 rounded-lg text-sm text-foreground flex flex-col w-full text-left">
+              <div className="flex items-center mb-1 font-medium">
+                <FileAudio className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span className="truncate">{fileName}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs pl-6">
-                <div><span className="text-blue-500">Formaat:</span> {fileInfo.format}</div>
-                <div><span className="text-blue-500">Grootte:</span> {fileInfo.size}</div>
-                <div><span className="text-blue-500">Duur:</span> {fileInfo.duration}</div>
+                <div><span className="text-muted-foreground">Formaat:</span> {fileInfo.format}</div>
+                <div><span className="text-muted-foreground">Grootte:</span> {fileInfo.size}</div>
+                <div><span className="text-muted-foreground">Duur:</span> {fileInfo.duration}</div>
               </div>
             </div>
           )}
-          {statusMessage && !error && (
-              <div className="mt-3 text-sm text-neutral-600">{statusMessage}</div>
-          )}
-          {error && (
-            <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded-lg text-sm text-yellow-800 w-full">
-              {error}
+          {/* Combined Status/Error Display */}
+          {(statusMessage || error) && (
+            <div className={`mt-3 p-2 rounded-lg text-sm w-full ${
+              error
+                ? 'bg-destructive/10 border border-destructive/30 text-destructive'
+                : 'bg-info/10 border border-info/30 text-info-foreground' // Assuming info color vars exist
+            }`}>
+              {error || statusMessage}
             </div>
           )}
         </div>
@@ -358,48 +344,38 @@ export default function FileUploader({
           </div>
         )}
 
-        {/* Upload Progress Bar - Render conditionally based on uploading state */}
-        {uploading && (
-          <div className="mt-4">
-            <div className="text-sm text-neutral-600 mb-2">{statusMessage}</div>
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-                <div
-                  className="bg-green-600 h-2.5 rounded-full transition-all duration-100 ease-linear"
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
-              </div>
+        {/* Upload/Conversion Progress Bar */}
+        {(uploading || isConverting) && (
+          <div className="mt-4 w-full">
+            <div className="text-sm text-muted-foreground mb-1 text-center">{statusMessage}</div>
+            <Progress value={uploading ? uploadProgress : conversionProgress} className="w-full h-2" />
           </div>
         )}
 
         {/* Process Button */}
-        <MotionButton
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+        <Button
           onClick={startProcess}
-          disabled={!selectedFile || isConverting || uploading} // Disable during conversion or upload
-          className={`mt-4 px-6 py-2 rounded-lg text-white font-medium flex items-center transition-all w-full justify-center ${
-            !selectedFile || isConverting || uploading
-              ? 'bg-neutral-300 cursor-not-allowed'
-              : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-md'
-          }`}
+          disabled={!selectedFile || isConverting || uploading}
+          className="mt-4 w-full"
+          size="lg" // Make button larger
         >
           {isConverting ? (
             <>
-              <svg /* Spinner */ className="animate-spin -ml-1 mr-2 h-4 w-4 text-white">...</svg>
-              Audio converteren... ({conversionProgress}%)
+              <Loader2 className="animate-spin mr-2 h-4 w-4" />
+              Converteren... ({conversionProgress}%)
             </>
           ) : uploading ? (
              <>
-              <svg /* Spinner */ className="animate-spin -ml-1 mr-2 h-4 w-4 text-white">...</svg>
+              <Loader2 className="animate-spin mr-2 h-4 w-4" />
               Uploaden... ({uploadProgress}%)
              </>
           ) : (
             <>
-              <svg /* Check icon */ className="h-4 w-4 mr-2" >...</svg>
+              <CheckCircle className="mr-2 h-4 w-4" />
               Start Verwerking
             </>
           )}
-        </MotionButton>
+        </Button>
       </div>
     </div>
   );

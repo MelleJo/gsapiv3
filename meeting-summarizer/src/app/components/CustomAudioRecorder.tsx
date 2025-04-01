@@ -1,14 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, MotionProps } from 'framer-motion';
-import React, { HTMLAttributes, forwardRef } from 'react';
+import React from 'react'; // Removed forwardRef, HTMLAttributes
+import { Button } from "@/components/ui/button"; // Import Shadcn Button
+import { Mic, Square, Loader2 } from 'lucide-react'; // Import icons
 
-type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionProps;
-const MotionDiv = forwardRef<HTMLDivElement, MotionDivProps>((props, ref) => (
-  <motion.div ref={ref} {...props} />
-));
-MotionDiv.displayName = 'MotionDiv';
+// Removed MotionDiv definition
 
 interface CustomAudioRecorderProps {
   onAudioRecorded: (file: File) => void;
@@ -98,41 +95,34 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
   };
 
   return (
-    <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold text-gray-800">Vergadering Opnemen</h2>
-      
-      <div className="relative">
-        <MotionDiv
-          animate={isRecording ? {
-            scale: [1, 1.1, 1],
-            opacity: [1, 0.8, 1],
-          } : {}}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-          className="absolute -inset-3 bg-red-100 rounded-full z-0"
-          style={{ display: isRecording ? 'block' : 'none' }}
-        />
-        
-        <button
-          onClick={toggleRecording}
-          className="relative z-10 w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
-          aria-label={isRecording ? "Stop opname" : "Start opname"}
-        >
-          {isRecording ? (
-            <div className="w-5 h-5 bg-white rounded"></div>
-          ) : (
-            <div className="w-5 h-5 bg-white rounded-full"></div>
-          )}
-        </button>
-      </div>
-      
+    <div className="flex flex-col items-center space-y-4 p-6"> {/* Removed bg and shadow, handled by Card in page.tsx */}
+      <h2 className="text-lg font-semibold text-foreground">Vergadering Opnemen</h2>
+
+      <Button
+        onClick={toggleRecording}
+        variant={isRecording ? "destructive" : "default"} // Change variant based on state
+        size="lg" // Make button larger
+        className="w-20 h-20 rounded-full" // Make it circular
+        aria-label={isRecording ? "Stop opname" : "Start opname"}
+      >
+        {isRecording ? (
+          <Square className="h-8 w-8" /> // Stop icon
+        ) : (
+          <Mic className="h-8 w-8" /> // Mic icon
+        )}
+      </Button>
+
       {isRecording && (
-        <div className="flex items-center text-red-500 font-medium animate-pulse">
-          <span className="mr-2 h-2 w-2 bg-red-500 rounded-full inline-block"></span>
+        <div className="flex items-center text-destructive font-medium">
+          <span className="relative flex h-3 w-3 mr-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span>
+          </span>
           Opname {formatTime(recordingTime)}
         </div>
       )}
-      
-      <p className="text-sm text-gray-500 mt-2">
+
+      <p className="text-sm text-muted-foreground mt-2">
         Klik om opname te {isRecording ? 'stoppen' : 'starten'}
       </p>
     </div>
