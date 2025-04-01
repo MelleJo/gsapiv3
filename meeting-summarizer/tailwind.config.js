@@ -13,7 +13,10 @@ module.exports = {
         secondary: {
           DEFAULT: "#8b5cf6", // purple-500
           dark: "#6d28d9"     // purple-700
-        }
+        },
+        // Updated with RGBA for transparency
+        'glass-blue': 'rgba(30, 58, 138, 0.8)', // Dark blue with ~80% opacity
+        'glass-green': 'rgba(22, 163, 74, 0.8)', // Green with ~80% opacity
       }
     }
   },

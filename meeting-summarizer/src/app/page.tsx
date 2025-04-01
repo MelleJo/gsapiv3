@@ -19,6 +19,8 @@ import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { type PutBlobResult } from '@vercel/blob';
 import FinalScreen from '@/app/components/FinalScreen';
+import Header from './components/Header'; // Import Header if not already (it should be)
+import PrivacyBanner from './components/PrivacyBanner'; // Import the new banner component
 // Removed marked import
 
 // Motion components...
@@ -192,6 +194,9 @@ export default function Home() {
       {/* Use Shadcn Dialog for EmailModal later */}
       <EmailModal isOpen={isEmailModalOpen} onClose={handleCloseEmailModal} summary={summary} /* Pass only raw summary */ transcription={transcription} onSendEmail={handleEmailNotification} />
       <ProcessingPipeline isActive={pipelineActive} status={pipelineStatus} onCancel={handleCancelPipeline} />
+
+      <Header /> {/* Ensure Header is rendered */}
+      <PrivacyBanner /> {/* Add the banner below the header */}
 
       {/* Conditional Rendering based on summary */}
       {summary ? ( // Check summary state

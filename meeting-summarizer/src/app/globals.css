@@ -56,8 +56,9 @@
 /* Base styles */
 body {
   font-family: var(--font-sans);
-  background-color: rgb(var(--color-neutral-50));
-  color: rgb(var(--color-neutral-800));
+  /* Updated background to dark blue-gray, foreground to light gray */
+  background-color: rgb(30 41 59); /* Equivalent to slate-800 */
+  color: rgb(229 231 235); /* Equivalent to gray-200 */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

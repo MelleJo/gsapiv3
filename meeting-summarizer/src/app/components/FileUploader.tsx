@@ -270,41 +270,44 @@ export default function FileUploader({
 
   return (
     <div className="flex flex-col items-center w-full">
+      {/* Updated dropzone styles for glass theme */}
       <div
-        className={`w-full border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+        className={cn(
+          "w-full rounded-xl p-6 text-center cursor-pointer transition-colors border border-white/20 bg-white/5", // Subtle bg and border
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-neutral-300 hover:border-blue-400 hover:bg-neutral-50'
-        }`}
+            ? 'bg-white/10 ring-2 ring-white/50' // Highlight on drag
+            : 'hover:bg-white/10' // Hover effect
+        )}
         onClick={triggerFileInput}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {/* Inner content: Icon, text, file info (no changes needed) */}
-        {/* Inner content: Icon, text, file info */}
-        <div className="flex flex-col items-center justify-center gap-2 text-center">
-          <UploadCloud className={`h-12 w-12 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+        {/* Inner content: Adjusted text colors for light text */}
+        <div className="flex flex-col items-center justify-center gap-2 text-center text-white">
+          <UploadCloud className={`h-12 w-12 transition-colors ${isDragging ? 'text-white' : 'text-white/70'}`} />
           <h3 className="text-lg font-medium">
             Sleep een audiobestand hierheen
           </h3>
-          <p className="text-sm text-muted-foreground mb-2">
-            of <span className="text-primary font-medium">klik om te bladeren</span>
+          <p className="text-sm text-white/60 mb-2">
+            of <span className="text-white font-medium">klik om te bladeren</span>
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-white/50">
             Ondersteunde bestanden: MP3, WAV, M4A, MP4, etc.
           </p>
+          {/* File info display adjustments */}
           {fileInfo && (
-            <div className="mt-3 p-3 bg-muted/50 rounded-lg text-sm text-foreground flex flex-col w-full text-left">
+            <div className="mt-3 p-3 bg-black/20 rounded-lg text-sm text-white/90 flex flex-col w-full text-left border border-white/10">
               <div className="flex items-center mb-1 font-medium">
                 <FileAudio className="h-4 w-4 mr-2 flex-shrink-0" />
                 <span className="truncate">{fileName}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs pl-6">
-                <div><span className="text-muted-foreground">Formaat:</span> {fileInfo.format}</div>
-                <div><span className="text-muted-foreground">Grootte:</span> {fileInfo.size}</div>
-                <div><span className="text-muted-foreground">Duur:</span> {fileInfo.duration}</div>
+                {/* Adjusted muted text color */}
+                <div><span className="text-white/60">Formaat:</span> {fileInfo.format}</div>
+                <div><span className="text-white/60">Grootte:</span> {fileInfo.size}</div>
+                <div><span className="text-white/60">Duur:</span> {fileInfo.duration}</div>
               </div>
             </div>
           )}
