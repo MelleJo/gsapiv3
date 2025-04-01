@@ -1,11 +1,11 @@
 // src/app/components/SummaryDisplay.tsx
 'use client';
 
-import { useState, useRef } from 'react';
-import React, { ReactNode } from 'react'; // Removed forwardRef, HTMLAttributes
+import { useState, useRef, useMemo } from 'react'; // Added useMemo
+import React, { ReactNode } from 'react';
 import Markdown from 'markdown-to-jsx';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
-import { Button } from "@/components/ui/button"; // Import Button
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Copy, Check, Loader2 } from 'lucide-react'; // Import icons
 
 // Removed MotionDiv and MotionButton definitions
@@ -28,32 +28,78 @@ const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong c
 const MyHr = ({ ...props }) => <hr className="my-6 border-t border-gray-200" {...props} />; // Adjusted margin
 // --- End Custom Components ---
 
+// Helper function to check if a line looks like a pipe-separated table row
+const isPipeTableRow = (line: string): boolean => {
+  const trimmed = line.trim();
+  // Must start and end with '|' and contain at least one more '|' inside
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.slice(1, -1).includes('|');
+};
+
+// Helper function to parse a pipe-separated row into cells
+const parsePipeRow = (line: string): string[] => {
+  return line.trim().slice(1, -1).split('|').map(cell => cell.trim());
+};
 
 interface SummaryDisplayProps {
-  summary: string; // Expect raw Markdown summary
+  summary: string;
   isLoading: boolean;
-  // Removed summaryHtml
 }
-
-// --- REMOVED Helper functions for Copy-to-Clipboard Logic ---
-
 
 export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayProps) {
   const [copied, setCopied] = useState<boolean>(false);
-  const contentRef = useRef<HTMLDivElement>(null); // Keep ref if needed for other purposes
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  // Copy function - copies raw markdown for now
-  // TODO: Re-implement pre-formatted text copy logic if needed later
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(summary || '');
+    // Try to copy the rendered text content first for better formatting
+    let textToCopy = summary || ''; // Fallback to raw summary
+    if (contentRef.current) {
+      textToCopy = contentRef.current.innerText || textToCopy;
+    }
+    navigator.clipboard.writeText(textToCopy);
     setCopied(true);
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+    setTimeout(() => setCopied(false), 2000);
   };
 
+  // Parse the summary content to separate markdown text and pseudo-tables
+  const parsedContent = useMemo(() => {
+    if (!summary) return [];
 
-  // Loading state
+    const lines = summary.split('\n');
+    const result: Array<{ type: 'markdown' | 'table'; content: string | string[][] }> = [];
+    let currentTable: string[][] | null = null;
+    let currentMarkdown = '';
+
+    lines.forEach((line) => {
+      if (isPipeTableRow(line)) {
+        if (currentMarkdown) {
+          result.push({ type: 'markdown', content: currentMarkdown.trim() });
+          currentMarkdown = '';
+        }
+        if (!currentTable) {
+          currentTable = [];
+        }
+        currentTable.push(parsePipeRow(line));
+      } else {
+        if (currentTable) {
+          result.push({ type: 'table', content: currentTable });
+          currentTable = null;
+        }
+        currentMarkdown += line + '\n';
+      }
+    });
+
+    // Add any remaining content
+    if (currentTable) {
+      result.push({ type: 'table', content: currentTable });
+    }
+    if (currentMarkdown) {
+      result.push({ type: 'markdown', content: currentMarkdown.trim() });
+    }
+
+    return result;
+  }, [summary]);
+
+
   if (isLoading) {
     return (
       <Card>
@@ -70,13 +116,30 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
       </Card>
     );
   }
-  // No summary
+
   if (!summary) { return null; }
 
-  // Removed animation variants
+  const markdownOptions = {
+    overrides: {
+      table: { component: MyTable },
+      thead: { component: MyThead },
+      tbody: { component: MyTbody },
+      tr: { component: MyTr },
+      th: { component: MyTh },
+      td: { component: MyTd },
+      p: { component: MyP },
+      ul: { component: MyUl },
+      ol: { component: MyOl },
+      li: { component: MyLi },
+      h2: { component: MyH2 },
+      h3: { component: MyH3 },
+      strong: { component: MyStrong },
+      hr: { component: MyHr },
+    }
+  };
 
   return (
-    <Card className="overflow-hidden"> {/* Apply overflow hidden to card */}
+    <Card className="overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-muted/30 border-b">
         <CardTitle className="text-xl font-semibold">
           Samenvatting
@@ -86,44 +149,44 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
         </Button>
       </CardHeader>
 
-      <CardContent className="p-6"> {/* Use CardContent for padding */}
-        <div ref={contentRef} className="prose prose-sm max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar"> {/* Use Tailwind Prose for basic styling */}
-           {/* Render Markdown using markdown-to-jsx with overrides */}
-           {/* Consider simplifying overrides if Tailwind Prose provides enough styling */}
-           <Markdown options={{
-               overrides: {
-                   // Keep table overrides for specific styling
-                   table: { component: MyTable },
-                   thead: { component: MyThead },
-                   tbody: { component: MyTbody },
-                   tr: { component: MyTr },
-                   th: { component: MyTh },
-                   td: { component: MyTd },
-                   p: { component: MyP },
-                   ul: { component: MyUl },
-                   ol: { component: MyOl },
-                   li: { component: MyLi },
-                   h2: { component: MyH2 },
-                   h3: { component: MyH3 },
-                   strong: { component: MyStrong },
-                   hr: { component: MyHr },
-                   // Remove overrides for p, ul, ol, li, h2, h3, strong, hr if Prose is sufficient
-                   // p: { component: MyP },
-                   // ul: { component: MyUl },
-                   // ol: { component: MyOl },
-                   // li: { component: MyLi },
-                   // h2: { component: MyH2 },
-                   // h3: { component: MyH3 },
-                   // strong: { component: MyStrong },
-                   // hr: { component: MyHr },
-               }
-           }}>
-               {summary}
-           </Markdown>
-         </div>
-       </CardContent>
+      <CardContent className="p-6">
+        <div ref={contentRef} className="prose prose-sm max-w-none max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+          {parsedContent.map((item, index) => {
+            if (item.type === 'table' && Array.isArray(item.content) && item.content.length > 0) {
+              const headers = item.content[0];
+              const rows = item.content.slice(1);
+              return (
+                <MyTable key={`table-${index}`}>
+                  <MyThead>
+                    <MyTr>
+                      {headers.map((header, hIndex) => (
+                        <MyTh key={`th-${index}-${hIndex}`}>{header}</MyTh>
+                      ))}
+                    </MyTr>
+                  </MyThead>
+                  <MyTbody>
+                    {rows.map((row, rIndex) => (
+                      <MyTr key={`tr-${index}-${rIndex}`}>
+                        {row.map((cell, cIndex) => (
+                          <MyTd key={`td-${index}-${rIndex}-${cIndex}`}>
+                            {/* Render cell content as markdown to handle potential inline formatting */}
+                            <Markdown options={markdownOptions}>{cell || ''}</Markdown>
+                          </MyTd>
+                        ))}
+                      </MyTr>
+                    ))}
+                  </MyTbody>
+                </MyTable>
+              );
+            } else if (item.type === 'markdown' && typeof item.content === 'string') {
+              // Render regular markdown sections
+              return <Markdown key={`md-${index}`} options={markdownOptions}>{item.content}</Markdown>;
+            }
+            return null; // Should not happen
+          })}
+        </div>
+      </CardContent>
 
-      {/* Styles - Keep scrollbar style */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: hsl(var(--muted)); border-radius: 10px; } /* Use theme color */
