@@ -232,7 +232,6 @@ export default function FileUploader({
 
 
   // Handle drag events (no changes needed here)
-  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => { /* ... */ };
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); }; // Necessary to allow drop
