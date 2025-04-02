@@ -17,7 +17,7 @@ export default function Header() {
           {/* Removed original description paragraph */}
           {/* <div>
             <p className="text-lg text-white/80 max-w-2xl mx-auto">
-              Transformeer uw audio-opnames...
+              Transformeer je audio-opnames...
             </p>
           </div> */}
         </div>

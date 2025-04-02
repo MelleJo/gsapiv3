@@ -82,7 +82,7 @@ export default function FinalScreen({
           <CardDescription>Bestand: {audioFileName}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row justify-between items-center gap-4">
-           <p className="text-sm text-muted-foreground">Hier is uw samenvatting en transcriptie.</p>
+           <p className="text-sm text-muted-foreground">Hier is je samenvatting en transcriptie.</p>
            <Button variant="outline" size="icon" onClick={onToggleSettings} aria-label="Instellingen">
              <Settings className="h-4 w-4" />
            </Button>
@@ -167,7 +167,7 @@ export default function FinalScreen({
       <Card>
         <CardHeader>
           <CardTitle>Acties</CardTitle> {/* Already sentence case */}
-          <CardDescription>Wat wilt u nu doen?</CardDescription>
+          <CardDescription>Wat wil je nu doen?</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap justify-center gap-4">
           <Button variant="outline" onClick={onRegenerateSummary} disabled={isSummarizing || isTranscribing}>

@@ -149,7 +149,7 @@ ${senderName || 'Super Kees Online'}`;
             {isPreview ? 'Voorbeeld van e-mail' : 'Verstuur samenvatting via e-mail'}
           </DialogTitle>
           <DialogDescription>
-            {isPreview ? 'Controleer de e-mail voordat u verzendt.' : 'Voer de details in om de samenvatting te verzenden.'}
+            {isPreview ? 'Controleer de e-mail voordat je verzendt.' : 'Voer de details in om de samenvatting te verzenden.'}
           </DialogDescription>
         </DialogHeader>
 

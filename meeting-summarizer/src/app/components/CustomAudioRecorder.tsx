@@ -65,7 +65,7 @@ export default function CustomAudioRecorder({ onAudioRecorded }: CustomAudioReco
       }, 1000);
     } catch (error) {
       console.error('Fout bij toegang tot microfoon:', error);
-      alert('Geen toegang tot microfoon. Controleer of u toestemming heeft verleend.');
+      alert('Geen toegang tot microfoon. Controleer of je toestemming hebt verleend.');
     }
   };
 

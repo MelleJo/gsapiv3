@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Super Kees Online - AI Transcriptie & Samenvatting',
-  description: 'Transformeer uw vergaderingen in bruikbare samenvattingen met AI-technologie',
+  title: 'Super Kees Online',
+  description: 'Super Kees Online',
   icons: {
     icon: '/favicon.ico',
   },
