@@ -18,6 +18,7 @@ import PromptSelector from '@/app/components/PromptSelector';
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { type PutBlobResult } from '@vercel/blob';
+import { upload } from '@vercel/blob/client'; // Import the client-side upload function
 import FinalScreen from '@/app/components/FinalScreen';
 import Header from './components/Header'; // Import Header if not already (it should be)
 import PrivacyBanner from './components/PrivacyBanner'; // Import the new banner component
@@ -121,23 +122,43 @@ export default function Home() {
  const handleAudioCapture = async (file: File) => {
     console.log("Handling captured audio:", file.name, file.size); setIsProcessing(true); setPipelineActive(true); const now = Date.now(); setPipelineStartTime(now); setStageStartTime(now);
     updatePipeline({ stage: 'uploading', progress: 0, message: `Audio opname "${file.name}" uploaden...`, estimatedTimeLeft: calculateEstimatedTime(file.size, 'uploading'), details: { fileName: file.name, fileSize: file.size } });
+
     try {
-        clearProgressInterval(); let uploadProgress = 0;
-        progressIntervalRef.current = setInterval(() => { if (uploadProgress < 95) { uploadProgress += Math.random() * 10; updatePipeline({ progress: Math.min(95, Math.round(uploadProgress)), estimatedTimeLeft: Math.max(1, calculateEstimatedTime(file.size, 'uploading') * (1 - uploadProgress / 100)) }); } else { clearProgressInterval(); } }, 200);
-        // Corrected the body structure for the presigned URL request
-        const presignedResponse = await fetch('/api/upload-blob', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'upload', payload: { pathname: file.name } }), // Correct body structure
-        });
-        if (!presignedResponse.ok) { const errorData = await presignedResponse.json(); throw new Error(`Kon upload URL niet krijgen: ${errorData.error || presignedResponse.statusText}`); }
-        const blobInfo = (await presignedResponse.json()) as PutBlobResult;
-        const uploadResponse = await fetch(blobInfo.url, { method: 'PUT', headers: { 'Content-Type': file.type || 'audio/wav' }, body: file, }); // Changed default type to audio/wav to match recorder
-        clearProgressInterval(); if (!uploadResponse.ok) { throw new Error(`Upload naar Blob mislukt: ${uploadResponse.statusText}`); }
-        updatePipeline({ progress: 100, message: 'Upload voltooid!' }); console.log('✅ Audio capture uploaded successfully:', blobInfo);
-        setAudioFileName(file.name); setCurrentStep(2);
-        setTimeout(() => { startPipelineProcessing(blobInfo); }, 500);
-    } catch (error) { clearProgressInterval(); console.error("❌ Fout bij uploaden van opname:", error); showNotification('error', error instanceof Error ? error.message : 'Upload van opname mislukt'); updatePipeline({ stage: 'error', message: 'Fout bij uploaden van opname', error: error instanceof Error ? error.message : 'Upload van opname mislukt' }); setIsProcessing(false); setPipelineActive(false); }
+        clearProgressInterval(); // Clear any previous interval
+
+        // Use the client-side upload helper from @vercel/blob/client
+        const blobInfo = await upload(
+            file.name, // Suggested filename for the blob
+            file,      // The File object to upload
+            {
+                access: 'public', // Set access level (public or private)
+                handleUploadUrl: '/api/upload-blob', // API route endpoint
+                // Optional: Add clientPayload for extra data if needed by onBeforeGenerateToken
+                // clientPayload: JSON.stringify({ customData: 'example' }),
+                // Optional: Add onUploadProgress callback
+                onUploadProgress: (progress) => {
+                    updatePipeline({ progress: progress, message: `Uploaden... ${progress}%` });
+                },
+            }
+        );
+
+        // Upload succeeded
+        updatePipeline({ progress: 100, message: 'Upload voltooid!' });
+        console.log('✅ Audio capture uploaded successfully:', blobInfo);
+        setAudioFileName(file.name); // Use original file name for display
+        setCurrentStep(2);
+        setTimeout(() => { startPipelineProcessing(blobInfo); }, 500); // Proceed to next step
+
+    } catch (error) {
+        // Handle errors from the upload function
+        clearProgressInterval();
+        console.error("❌ Fout bij uploaden van opname:", error);
+        const message = error instanceof Error ? error.message : 'Upload van opname mislukt';
+        showNotification('error', message);
+        updatePipeline({ stage: 'error', message: 'Fout bij uploaden van opname', error: message });
+        setIsProcessing(false);
+        setPipelineActive(false);
+    }
 };
 
   const handleCancelPipeline = () => { clearProgressInterval(); setPipelineActive(false); setIsProcessing(false); setPipelineStartTime(null); setStageStartTime(null); showNotification('info', 'Verwerking geannuleerd'); };
