@@ -124,10 +124,15 @@ export default function Home() {
     try {
         clearProgressInterval(); let uploadProgress = 0;
         progressIntervalRef.current = setInterval(() => { if (uploadProgress < 95) { uploadProgress += Math.random() * 10; updatePipeline({ progress: Math.min(95, Math.round(uploadProgress)), estimatedTimeLeft: Math.max(1, calculateEstimatedTime(file.size, 'uploading') * (1 - uploadProgress / 100)) }); } else { clearProgressInterval(); } }, 200);
-        const presignedResponse = await fetch('/api/upload-blob', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename: file.name }), });
+        // Corrected the body structure for the presigned URL request
+        const presignedResponse = await fetch('/api/upload-blob', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'upload', payload: { pathname: file.name } }), // Correct body structure
+        });
         if (!presignedResponse.ok) { const errorData = await presignedResponse.json(); throw new Error(`Kon upload URL niet krijgen: ${errorData.error || presignedResponse.statusText}`); }
         const blobInfo = (await presignedResponse.json()) as PutBlobResult;
-        const uploadResponse = await fetch(blobInfo.url, { method: 'PUT', headers: { 'Content-Type': file.type || 'audio/webm' }, body: file, });
+        const uploadResponse = await fetch(blobInfo.url, { method: 'PUT', headers: { 'Content-Type': file.type || 'audio/wav' }, body: file, }); // Changed default type to audio/wav to match recorder
         clearProgressInterval(); if (!uploadResponse.ok) { throw new Error(`Upload naar Blob mislukt: ${uploadResponse.statusText}`); }
         updatePipeline({ progress: 100, message: 'Upload voltooid!' }); console.log('✅ Audio capture uploaded successfully:', blobInfo);
         setAudioFileName(file.name); setCurrentStep(2);
