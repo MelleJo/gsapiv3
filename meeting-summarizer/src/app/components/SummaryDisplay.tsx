@@ -24,10 +24,10 @@ const MyP = ({ children, ...props }: { children?: ReactNode }) => <p className="
 // Increased list bottom margin and item spacing
 const MyUl = ({ children, ...props }: { children?: ReactNode }) => <ul className="list-disc pl-6 mb-5 space-y-2" {...props}>{children}</ul>;
 const MyOl = ({ children, ...props }: { children?: ReactNode }) => <ol className="list-decimal pl-6 mb-5 space-y-2" {...props}>{children}</ol>; // Corrected closing tag implicitly
-const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-1.5" {...props}>{children}</li>; // Slightly more space between list items
+const MyLi = ({ children, ...props }: { children?: ReactNode }) => <li className="mb-2" {...props}>{children}</li>; // Slightly more space between list items
 // Increased heading margins
-const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-2xl font-semibold mt-8 mb-4 border-b border-gray-300 pb-2 text-gray-800" {...props}>{children}</h2>;
-const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-xl font-medium mt-6 mb-3 text-gray-700" {...props}>{children}</h3>;
+const MyH2 = ({ children, ...props }: { children?: ReactNode }) => <h2 className="text-2xl font-semibold mt-8 mb-5 border-b border-gray-300 pb-2 text-gray-800" {...props}>{children}</h2>;
+const MyH3 = ({ children, ...props }: { children?: ReactNode }) => <h3 className="text-xl font-medium mt-6 mb-4 text-gray-700" {...props}>{children}</h3>;
 const MyStrong = ({ children, ...props }: { children?: ReactNode }) => <strong className="font-semibold text-gray-900" {...props}>{children}</strong>;
 // Increased hr margin
 const MyHr = ({ ...props }) => <hr className="my-8 border-t border-gray-200" {...props} />;
