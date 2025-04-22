@@ -38,6 +38,32 @@ const processContentForHtmlEmail = (content: string): string => {
   return processedContent;
 };
 
+// Helper function to create a plain text version of the content, excluding markdown tables
+const processContentForPlainTextEmail = (content: string): string => {
+    const lines = content.split('\n');
+    let plainTextOutput = '';
+    let inTable = false;
+
+    lines.forEach(line => {
+        // Check for markdown table start (header or separator)
+        if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+            inTable = true;
+            // Skip table lines in plain text
+        } else {
+            // If not in a table, or if a table just ended, add the line
+            if (inTable) {
+                // If the previous line was part of a table and this one wasn't, the table ended
+                inTable = false;
+                // Add a newline to separate the table from the following text in plain text
+                 plainTextOutput += '\n';
+            }
+            plainTextOutput += line + '\n';
+        }
+    });
+
+    return plainTextOutput.trim();
+};
+
 
 export async function POST(request: Request) {
   try {
@@ -72,8 +98,10 @@ export async function POST(request: Request) {
       },
     });
 
-    // Process the content to handle newlines correctly for HTML email
-    const processedContent = processContentForHtmlEmail(content);
+    // Process the content for HTML and Plain Text emails
+    const processedHtmlContent = processContentForHtmlEmail(content);
+    const processedPlainTextContent = processContentForPlainTextEmail(content);
+
 
     // Construct the email content with HTML formatting
     const htmlContent = `
@@ -142,7 +170,7 @@ export async function POST(request: Request) {
           ` : ''}
 
           <div class="content">
-            ${processedContent}
+            ${processedHtmlContent}
           </div>
 
           <div class="footer">
@@ -159,8 +187,8 @@ export async function POST(request: Request) {
       subject: subject,
       html: htmlContent,
       text: additionalMessage
-        ? `${subject}\n\n${additionalMessage}\n\n${content}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`
-        : `${subject}\n\n${content}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`,
+        ? `${subject}\n\n${additionalMessage}\n\n${processedPlainTextContent}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`
+        : `${subject}\n\n${processedPlainTextContent}\n\nDit bericht is verzonden via Meeting Summarizer${senderName ? ` door ${senderName}` : ''}.`,
     };
 
     // Send the email
