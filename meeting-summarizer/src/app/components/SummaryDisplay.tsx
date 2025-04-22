@@ -56,14 +56,84 @@ export default function SummaryDisplay({ summary, isLoading }: SummaryDisplayPro
   const [copied, setCopied] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const copyToClipboard = () => {
-    // Try to copy the rendered text content first for better formatting
-    let textToCopy = summary || ''; // Fallback to raw summary
-    if (contentRef.current) {
-      textToCopy = contentRef.current.innerText || textToCopy;
+  const copyToClipboard = async () => {
+    if (!summary) return;
+
+    let plainTextContent = '';
+    let htmlContent = '';
+
+    // Simple markdown to HTML conversion for basic elements (paragraphs, line breaks)
+    const markdownToSimpleHtml = (markdown: string): string => {
+        // Replace double newlines with paragraph tags
+        let html = markdown.split('\n\n').map(paragraph => `<p>${paragraph.trim()}</p>`).join('');
+        // Replace single newlines within paragraphs with <br> (if not already handled by <p>)
+        html = html.replace(/(<p>.*?)\n(.*?<\/p>)/g, '$1<br>$2');
+        return html;
+    };
+
+    // Function to generate HTML table from parsed table content
+    const generateHtmlTable = (tableContent: string[][]): string => {
+        if (tableContent.length === 0) return '';
+
+        let html = '<table style="border-collapse: collapse; width: 100%;">'; // Add basic inline styles for compatibility
+        const hasHeaders = tableContent[0].length > 0; // Assuming first row is header
+
+        // Add header
+        if (hasHeaders) {
+            html += '<thead><tr>';
+            tableContent[0].forEach(header => {
+                html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">${header.trim()}</th>`; // Add basic inline styles
+            });
+            html += '</tr></thead>';
+        }
+
+        // Add body
+        html += '<tbody>';
+        const rows = hasHeaders ? tableContent.slice(1) : tableContent;
+        rows.forEach(row => {
+            html += '<tr>';
+            row.forEach(cell => {
+                html += `<td style="border: 1px solid #ddd; padding: 8px; text-align: left;">${cell.trim()}</td>`; // Add basic inline styles
+            });
+            html += '</tr>';
+        });
+        html += '</tbody>';
+        html += '</table>';
+        return html;
+    };
+
+
+    parsedContent.forEach(item => {
+      if (item.type === 'markdown' && typeof item.content === 'string') {
+        plainTextContent += item.content + '\n'; // Keep original markdown for plain text
+        htmlContent += markdownToSimpleHtml(item.content) + '\n'; // Convert markdown to simple HTML
+      } else if (item.type === 'table' && Array.isArray(item.content)) {
+        // For plain text, recreate the markdown table format
+        plainTextContent += item.content.map(row => '| ' + row.join(' | ') + ' |').join('\n') + '\n';
+        // Add the separator line for plain text markdown table
+        if (item.content.length > 0) {
+             plainTextContent += '|' + item.content[0].map(() => '---|').join('') + '|\n';
+        }
+        htmlContent += generateHtmlTable(item.content) + '\n'; // Generate HTML table
+      }
+    });
+ 
+    try {
+      // Use the modern Clipboard API for rich text
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': new Blob([plainTextContent], { type: 'text/plain' }),
+          'text/html': new Blob([htmlContent], { type: 'text/html' }),
+        }),
+      ]);
+      setCopied(true);
+    } catch (err) {
+      console.error('Failed to copy content: ', err);
+      // Fallback to old method if modern API fails
+      navigator.clipboard.writeText(plainTextContent);
+      setCopied(true); // Still indicate copied, though it's just plain text
     }
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
+
     setTimeout(() => setCopied(false), 2000);
   };
 
