@@ -15,6 +15,7 @@ import EmailModal from '@/app/components/EmailModal';
 import { toast } from "sonner"; // Import sonner toast
 import ProcessingPipeline, { PipelineStatus, PipelineStage } from './components/ProcessingPipeline';
 import PromptSelector from '@/app/components/PromptSelector';
+import { Textarea } from "@/components/ui/textarea"; // Import Shadcn Textarea
 import { chatModels, whisperModels, defaultConfig } from '@/lib/config';
 import { calculateEstimatedTime, estimateChunks, calculateProgressFromTime, getInitialStageMessage } from '../lib/pipelineHelpers';
 import { type PutBlobResult } from '@vercel/blob';
@@ -59,6 +60,8 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(false);
   // Removed notification state
+  const [inputType, setInputType] = useState<'audio' | 'text'>('audio');
+  const [inputText, setInputText] = useState<string>('');
   const mainContainerRef = useRef<HTMLDivElement>(null);
 
   const clearProgressInterval = () => { if (progressIntervalRef.current) { clearInterval(progressIntervalRef.current); progressIntervalRef.current = null; } };
@@ -119,7 +122,26 @@ export default function Home() {
     } catch (error) { console.error('❌ Samenvatting fout:', error); clearProgressInterval(); updatePipeline({ stage: 'error', message: 'Fout tijdens samenvatting', error: error instanceof Error ? error.message : 'Onbekende fout' }); showNotification('error', `Fout tijdens samenvatting: ${error instanceof Error ? error.message : 'Onbekende fout'}`); setIsProcessing(false); }
   };
 
- const handleAudioCapture = async (file: File) => {
+  const handleTextSubmit = () => {
+    if (!inputText.trim()) {
+      showNotification('warning', 'Voer alstublieft tekst in om samen te vatten.');
+      return;
+    }
+    console.log('Text to summarize:', inputText);
+    setTranscription(inputText); // Use inputText as the "transcription"
+    setIsProcessing(true);
+    setPipelineActive(true);
+    const now = Date.now();
+    setPipelineStartTime(now);
+    setStageStartTime(now);
+    // Set pipeline to summarizing stage directly for text input
+    updatePipeline({ stage: 'summarizing', progress: 0, message: getInitialStageMessage('summarizing'), estimatedTimeLeft: calculateEstimatedTime(inputText.length * 2, 'summarizing'), details: { fileName: "Ingevoerde Tekst" } });
+    setCurrentStep(3); // Advance to the summary display step
+    setTimeout(() => { document.getElementById('summary-section')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
+    summarizeWithProgress(inputText); // Directly summarize the input text
+  };
+ 
+  const handleAudioCapture = async (file: File) => {
     console.log("Handling captured audio:", file.name, file.size); setIsProcessing(true); setPipelineActive(true); const now = Date.now(); setPipelineStartTime(now); setStageStartTime(now);
     updatePipeline({ stage: 'uploading', progress: 0, message: `Audio opname "${file.name}" uploaden...`, estimatedTimeLeft: calculateEstimatedTime(file.size, 'uploading'), details: { fileName: file.name, fileSize: file.size } });
 
@@ -261,11 +283,38 @@ export default function Home() {
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <PromptSelector onSelectPrompt={(prompt) => setSelectedPrompt(prompt)} selectedPromptId={selectedPrompt.id} />
-                      <div className="grid md:grid-cols-2 gap-6">
-                        {/* Wrap existing components in divs or directly style if needed */}
-                        <div><CustomAudioRecorder onAudioRecorded={handleAudioCapture} /></div>
-                        <div><FileUploader onFileUploadComplete={handleFileUploadComplete} /></div>
+
+                      {/* Input Type Selector */}
+                      <div className="flex space-x-2 mb-4">
+                        <Button variant={inputType === 'audio' ? 'default' : 'outline'} onClick={() => setInputType('audio')}>
+                          Audio Invoer
+                        </Button>
+                        <Button variant={inputType === 'text' ? 'default' : 'outline'} onClick={() => setInputType('text')}>
+                          Tekst Invoer
+                        </Button>
                       </div>
+
+                      {inputType === 'audio' && (
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div><CustomAudioRecorder onAudioRecorded={handleAudioCapture} /></div>
+                          <div><FileUploader onFileUploadComplete={handleFileUploadComplete} /></div>
+                        </div>
+                      )}
+
+                      {inputType === 'text' && (
+                        <div className="space-y-4">
+                          <Textarea
+                            placeholder="Typ of plak hier uw tekst voor de samenvatting..."
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            rows={10}
+                            className="w-full p-2 border rounded-md"
+                          />
+                          <Button onClick={handleTextSubmit} disabled={isProcessing || !inputText.trim()}>
+                            Vat Tekst Samen
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                     {/* Optional CardFooter if needed */}
                   </Card>
